@@ -8,7 +8,7 @@
 #ifndef ZCONF_H
 #define ZCONF_H
 /* #undef Z_PREFIX */
-#define Z_HAVE_UNISTD_H
+/* #undef Z_HAVE_UNISTD_H */
 
 /*
  * If you *really* need a unique prefix for all types and library functions,
@@ -474,12 +474,7 @@ typedef uLong FAR uLongf;
 #endif
 #ifndef Z_SOLO
 #  if defined(Z_HAVE_UNISTD_H) || defined(_LARGEFILE64_SOURCE)
-#    ifdef _WIN32
-#       include <io.h>
-#       include <process.h>
-#   else
 #    include <unistd.h>         /* for SEEK_*, off_t, and _LFS64_LARGEFILE */
-#   endif
 #    ifdef VMS
 #      include <unixio.h>       /* for off_t */
 #    endif

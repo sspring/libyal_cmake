@@ -3,12 +3,12 @@ if (bzip2_CONFIG_INCLUDED)
 endif()
 set(bzip2_CONFIG_INCLUDED TRUE)
 
-set(bzip2_INCLUDE_DIRS C:/Program Files (x86)/libewf/include)
+set(bzip2_INCLUDE_DIRS C:/Program Files (x86)/libfvde/include)
 
 foreach(lib bz2)
   set(onelib "${lib}-NOTFOUND")
   find_library(onelib ${lib}
-    PATHS C:/Program Files (x86)/libewf/lib
+    PATHS C:/Program Files (x86)/libfvde/lib
     NO_DEFAULT_PATH
     )
   if(NOT onelib)
