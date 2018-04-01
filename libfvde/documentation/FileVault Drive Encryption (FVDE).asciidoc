@@ -1,0 +1,3345 @@
+= FileVault Drive Encryption (FVDE)
+Analysis of FVDE
+
+:toc:
+:toclevels: 4
+
+:numbered!:
+[abstract]
+== Summary
+The FileVault Drive Encryption (FVDE) format is used by Apple Mac OS X to
+encrypt volumes. This specification is based on available documentation and was
+enhanced by reverse engineering of the file format.
+
+This document is intended as a working document for the FileVault Drive
+Encryption (FVDE) format specification. Which should allow existing Open Source
+forensic tooling to be able to process this volume type.
+
+[preface]
+== Document information
+[cols="1,5"]
+|===
+| Author(s): | Omar Choudary <choudary.omar@gmail.com> +
+Joachim Metz <joachim.metz@gmail.com>
+| Abstract: | This document contains information about the Mac OS X FileVault Drive Encryption (FVDE) format
+| Classification: | Public
+| Keywords: | FileVault 2, FileVault Drive Encryption, FVDE, Core Storage, CoreStorage
+|===
+
+[preface]
+== License
+....
+Copyright (C) 2011-2017, Omar Choudary <choudary.omar@gmail.com>,
+                         Joachim Metz <joachim.metz@gmail.com>.
+Permission is granted to copy, distribute and/or modify this document under the
+terms of the GNU Free Documentation License, Version 1.3 or any later version
+published by the Free Software Foundation; with no Invariant Sections, no
+Front-Cover Texts, and no Back-Cover Texts. A copy of the license is included
+in the section entitled "GNU Free Documentation License".
+....
+
+[preface]
+== Revision history
+[cols="1,1,1,5",options="header"]
+|===
+| Version | Author(s) | Date | Comments
+| 0.0.1 | O. Choudary | September 2011 | Initial version.
+| 0.0.2 | J.B. Metz | May 2012 | Format changes and additional information. +
+Added secondary encrypted metadata block.
+| 0.0.3 | J.B. Metz | July 2012 +
+August 2012 +
+September 2012 +
+November 2012 | Additional information regarding CoreStorage.
+| 0.0.4 | O. Choudary | November 2012 | Textual updates.
+| 0.0.5 | J.B. Metz | December 2012 | Updates for Mac OS X 10.8 (Mountain Lion)
+| 0.0.6 | J.B. Metz | February 2013 | Additional findings with thanks to O. De Lampugnani, Y. Khatri and D. Parker.
+| 0.0.7 | J.B. Metz | March 2013 | Additional information regarding CoreStorage.
+| 0.0.8 | J.B. Metz | February 2015 | Switched to asccidoc format. +
+Additional information about partially compressed volumes.
+| 0.0.9 | J.B. Metz | October 2015 | Additional information about DEFLATE compressed XML plist, with thanks toi A. Rubtsov.
+| 0.0.10 | J.B. Metz | October 2015 | Additional information about metadata.
+| 0.0.11 | J.B. Metz | June 2016 | Additional information about Core Storage XML plist.
+| 0.0.12 | J.B. Metz | July 2016 | Additional information about metadata.
+| 0.0.13 | J.B. Metz | May 2017 | Additional information about metadata.
+| 0.0.14 | J.B. Metz | October 2017 | Additional information about metadata.
+|===
+
+:numbered:
+== Overview
+FileVault Drive Encryption (FVDE) is the volume encryption used by Apple
+Mac OS X as of Lion (10.7).
+
+This document was initially written for FVDE, but the structures mentioned are
+also used by the Core Storage (CS) volume management system. CS supports both
+non-encrypted and encrypted volumes.
+
+CS distinguishes between different types of encrypt volumes:
+
+* EncryptedRoot.plist.wipekey protected volume; this volume can be accessed via multiple user passwords or a recovery password. The disk that contains the volume should also have a partition name "Recovery HD" that contains the EncryptedRoot.plist.wipekey file. This is also referred to as FVDE.
+* Pass-phrase protected volume, this volume can be accessed via a known pass-phrase and uses XML plist-like data identified as "com.apple.corestorage.lvf.encryption.context".
+
+Both EncryptedRoot.plist.wipekey and
+"com.apple.corestorage.lvf.encryption.context" are definined as the the
+encryption context plist in this document.
+
+[cols="1,5",options="header"]
+|===
+| Characteristics | Description
+| Byte order | Little-endian +
+Except for UUID/GUID values, which are stored in big-endian
+| Date and time values |
+| Character strings | Unicode stored as UTF-8
+|===
+
+=== Test version
+The following version of programs were used to test the information within this document:
+
+* Mac OS X Lion (10.7)
+* Mac OS X Mountain Lion (10.8)
+* Mac OS X Mavericks (10.9)
+* Mac OS X Yosemite (10.10)
+* [yellow-background]*TODO: Mac OS X El Capitan (10.11)*
+* [yellow-background]*TODO: macOS Sierra (10.12)*
+
+== Keys
+To encrypt storage media CoreStorage uses different kind of keys.
+
+=== Volume master key
+The Volume Master Key (VMK) is used to encrypt the data on the volume.
+
+The VMK is 128-bit of size and is stored in multiple KEKWrappedVolumeKeyStruct
+structures in the encryption context plist.
+
+=== Volume tweak key
+The volume tweak is the second key required by AES-XTS to decrypt the data on
+the volume. The volume tweak is 128-bit of size and is determined as follows:
+
+First the 128-bit volume master key is concatenated with the 128-bit logical
+volume family identifier (UUID) (com.apple.corestorage.lv.familyUUID) as the
+tweak key data.
+
+Then the one-way function SHA256 is applied to the tweak key data, so that only
+the first 128 bits is retained as the volume tweak key:
+....
+volume tweak key = SHA256( tweak key data )
+....
+
+=== EncryptedRoot.plist.wipekey master key
+The physical volume identifier (128-bit UUID) of the encrypted volume is used
+to decrypt the EncryptedRoot.plist.wipekey file. This identifier can be found
+in the CS volume header.
+
+=== Recovery key
+FileVault provides for a recovery password to unlock the encrypted data. The
+recovery password is used to determine a recovery key.
+
+Example recovery password:
+....
+35AJ-AC98-TI1H-N4M3-HDUQ-UQFG
+....
+
+This recovery password is used as a string, including the dashes between the
+digits. The corresponding recovery key is calculated using the PBKDF2 algorithm
+with:
+
+* Apply the PBKDF2 algorithm using:
+** number of iterations
+** SHA256 as the pseudo-random function (PRF)
+** a salt, as stored in the corresponding PassphraseWrappedKEKStruct in the EncryptedRoot.plist.wipekey file
+** the recovery password
+
+The PassphraseWrappedKEKStruct contains the primary key to unlock the
+KEKWrappedVolumeKeyStruct containing the volume master key.
+
+1. The recovery key is used to retrieve a Key Encrypting Key (KEK) by decrypting a blob in the PassphraseWrappedKEKStruct.
+2. This KEK is then used to recover the Volume Master Key (VMK) from the KEKWrappedVolumeKeyStruct.
+
+The number of iterations is stored in the PassphraseWrappedKEKStruct but seems
+to be consistently 41000 for EncryptedRoot.plist.wipekey protected volumes on
+Mac OS X Lion.
+
+=== User key
+For every user on an Mac OS X system with FVDE, FileVault provides for a user
+password to unlock the encrypted data. The user password is used to determine a
+user key.
+
+[yellow-background]*For now it is assumed that the user password contains ASCII characters only.*
+[yellow-background]*TODO determine if other characters are allowed and how they are encoded during the password derivation.*
+
+The corresponding user key is calculated and used in the same manner as the
+recovery key to obtain the volume master key. However each user has its own
+associated PassphraseWrappedKEKStruct.
+
+== Encryption methods
+FileVault Disk Encryption uses the AES-XTS encryption method to encrypt both
+the volume metadata and sector data. FileVault uses different methods to
+encrypt a multi-user system volume and single-user removable media volume.
+
+=== AES-XTS
+The AES-XTS encryption method uses:
+
+* a primary key (key 1) to encrypt/decrypt the data (the whitened
+plaintext/ciphertext).
+* a secondary key (key 2) to encrypt/ decrypt the tweak value, also referred to
+as the tweak key. The encrypted tweak value is used to whiten the
+plaintext/ciphertext.
+* a tweak value
+
+The cipher block size is 128 bytes.
+
+See `[IEEE 1619-2007]` for more information.
+
+The EncryptedRoot.plist.wipekey is encrypted using the "volume key data" of the
+FileVault encrypted volume as primary key, and a sequence of 0-byte values as
+both the tweak key and the tweak value. The unit size is the entire file.
+
+The volume metadata is encrypted using the volume "key data" as primary key,
+the "physical volume identifier" of the volume as tweak key and a sequence of
+0-byte values as the tweak value. The unit size is 8192 bytes. Both the "volume
+key data" and "physical volume identifier" can be found in the volume header of
+the corresponding volume.
+
+The volume sector data is encrypted using the "volume master key" as primary
+key, the "volume tweak key" as tweak key and the sector number as tweak value.
+The tweak value is the corresponding sector number represented as a 128-bit
+little-endian value. The unit size is the sector size, commonly 512 bytes.
+
+=== Encrypted system volume
+In an encrypted system volume the EncryptedRoot.plist.wipekey contains the
+volume master key. A pass-phrase or recovery password is used to unlock an
+intermediate key which provides access to the volume master key.
+
+=== Encrypted removable media volume
+FileVault2 support multiple ways to encrypt a removable media volume, several
+of the know methods are:
+
+* with an encryption context
+* without an encryption context
+* decrypted
+
+==== With an encryption context
+In an encrypted removable media volume with an encryption context the XML
+plist-like data identified as "com.apple.corestorage.lvf.encryption.context"
+stored in the encrypted metadata contains the volume master key. A pass-phrase
+is used to unlock an intermediate key which provides access to the volume
+master key.
+
+==== Without an encryption context
+[yellow-background]*TODO*
+
+==== Decrypted volume
+diskutil cs decryptVolume will decrypt the volume but the data on-disk is still
+encrypted with the [yellow-background]*TODO*.
+
+== Volume header
+The volume header is 512 bytes of size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 4 | | Checksum +
+Contains a CRC-32 of bytes 8 to 512
+| 4 | 4 | 0xffffffff | Initial value of the CRC-32
+| 8 | 2 | 1 | Version
+| 10 | 2 | 0x0010 | Block type
+| 12 | 4 | | [yellow-background]*(Block) serial number*
+| 16 | 8 | [yellow-background]*0x00000001* | [yellow-background]*Unknown*
+| 24 | 8 | | [yellow-background]*Unknown (Empty values)*
+| 32 | 8 | | [yellow-background]*Unknown (Empty values)*
+| 40 | 8 | | [yellow-background]*Unknown (Empty values)*
+| 48 | 4 | | Bytes per sector +
+[yellow-background]*(header block size?)*
+| 52 | 4 | | [yellow-background]*Unknown (Empty values)*
+| 56 | 8 | | [yellow-background]*Unknown (Empty values)*
+| 64 | 8 | | Physical volume size (in bytes)
+| 72 | 16 | | [yellow-background]*Unknown* +
+[yellow-background]*(Assumed to be resize flags? Could this be the resize volume size and/or resize stack size)*
+| 88 | 2 | "CS" | CoreStorage signature
+| 90 | 4 | | Checksum algorithm +
+See section: <<checksum_algorithms,Checksum algorithms>>
+| 94 | 2 | 4 | [yellow-background]*Number of metadata blocks?* +
+[yellow-background]*Maximum of 8?*
+| 96 | 4 | | Block size (in bytes)
+| 100 | 4 | | Metadata size (in bytes)
+| 104 | 8 | | First metadata block number +
+The block number is relative from the start of the volume +
+[yellow-background]*(why is this referred to as disklabel block?)*
+| 112 | 8 | | Second metadata block number +
+The block number is relative from the start of the volume
+| 120 | 8 | | Third metadata block number +
+The block number is relative from the start of the volume
+| 128 | 8 | | Fourth metadata block number +
+The block number is relative from the start of the volume
+| 136 | 4 x 8 = 32 | | [yellow-background]*Reserved for medadata block numbers?*
+| 168 | 4 | 16 | Key data size
+| 172 | 4 | 2 | Encryption method +
+2 => AES-XTS
+| 176 | 16 | | Key data
+| 192 | 112 | | [yellow-background]*Unknown (empty values)* +
+[yellow-background]*Reserved for key data?*
+| 304 | 16 | | Physical volume identifier +
+Contains an UUID in big-endian +
+Used as the AES-XTS tweak key
+| 304 | 16 | | Logical volume group identifier (com.apple.corestorage.lv.groupUUID) +
+Contains an UUID in big-endian
+| 336 | 176 | | [yellow-background]*Unknown (empty values)* +
+[yellow-background]*Unused*
+|===
+
+A copy of the volume header is stored at the end of the volume, this copy is
+checked when the volume header at the start of the volume is corrupt.
+
+=== [[checksum_algorithms]]Checksum algorithms
+
+[cols="1,1,5",options="header"]
+|===
+| Value | Identifier | Description
+| 1 | CRC-32C | CRC-32 using the Castagnoli polynomial of 0x1edc6f41, also known as CRC-32C. +
+The CRC-32 calculation does not use the XOR with 0xffffffff before and after the calculation, which is also referred to as weak CRC-32 calculation.
+|===
+
+== Metadata (section)
+The metadata (section) (also referred to CS as disk label) consists of:
+
+* a metadata block type 0x0011
+** a metadata block header
+** metadata block data
+* optional metadata blocks
+** [yellow-background]*reported block types 0x0014, 0x0024*
+* volume groups descriptor
+
+[yellow-background]*TODO, value index and plist ?*
+
+The size of the metadata block is defined in the volume header, which commonly is 4 MiB.
+
+=== Metadata block header
+The metadata block header is 64 bytes of size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 4 | | Checksum +
+Contains a CRC-32 of bytes 8 to 8192 +
+[yellow-background]*Or does this depend on the block size?*
+| 4 | 4 | 0xffffffff | Initial value of the CRC-32
+| 8 | 2 | 1 | Version
+| 10 | 2 | | Block type
+| 12 | 4 | | [yellow-background]*Unknown (serial number)*
+| 16 | 8 | | [yellow-background]*Unknown (block group)*
+| 24 | 8 | | [yellow-background]*Unknown* +
+[yellow-background]*Chain block number or 0 if not set ?*
+| 32 | 8 | | Block number +
+The block number relative from the start of the metadata or encrypted metadata
+| 40 | 8 | | [yellow-background]*Unknown* +
+[yellow-background]*First chain block number or 0 if not set ?*
+| 48 | 4 | | Block size (in bytes)
+| 52 | 4 | | [yellow-background]*Unknown (flags ?)* +
+[yellow-background]*0x00000000* +
+[yellow-background]*0x00000002* +
+[yellow-background]*0x00000004* +
+[yellow-background]*(0x00000006 used by LVFwiped block)*
+| 56 | 8 | | [yellow-background]*Unknown (empty values)*
+|===
+
+[yellow-background]*Note the revision number increments across a set of encrypted metadata blocks starting with 0x0013.*
+
+[yellow-background]*The (block) serial number does not always match the value in the volume header.*
+
+=== Metadata block data type 0x0011
+Metadata block data type 0x0011 contains information about [yellow-background]*TODO: describe*
+
+The metadata block data is variable in size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 4 | | Metadata size (in bytes) +
+Including the metadata block header
+| 4 | 4 | 0x00000003 | [yellow-background]*Unknown*
+| 8 | 4 | | Checksum +
+[yellow-background]*Contains a CRC-32 of bytes ?*
+| 12 | 4 | 0xffffffff | Initial value of the CRC-32
+| 16 | 4 | 0xc07e5707 | [yellow-background]*Unknown*
+| 20 | 4 | | [yellow-background]*(Block) serial number*
+| 24 | 4 | | [yellow-background]*(Block) serial number* +
+[yellow-background]*Secondary (Block) serial number?*
+| 28 | 4 | 0x00012710 | [yellow-background]*Unknown*
+| 32 | 40 | | [yellow-background]*Unknown (Empty values)*
+| 72 | 4 | | [yellow-background]*(Block) serial number or an empty value if not set*
+| 76 | 4 | | [yellow-background]*(Block) serial number or an empty value if not set* +
+[yellow-background]*Secondary (Block) serial number?*
+| 80 | 24 | | [yellow-background]*Unknown (Empty values)*
+| 104 | 4 | 0x0000000c | [yellow-background]*Unknown*
+| 108 | 4 | 0x0000000d | [yellow-background]*Unknown*
+| 112 | 4 | 0x00000040 | [yellow-background]*Unknown*
+| 116 | 4 | 0x00010030 | [yellow-background]*Unknown*
+| 120 | 4 | 0x00000001 | [yellow-background]*Unknown*
+| 124 | 4 | 0x00010001 | [yellow-background]*Unknown*
+| 128 | 4 | 0x00000500 +
+0x00000800 | [yellow-background]*Unknown*
+| 132 | 24 | | [yellow-background]*Unknown (Empty values)*
+| 156 | 4 | | Volume groups descriptor offset
+| 160 | 4 | | XML offset
+| 164 | 4 | | XML size
+| 168 | 4 | | [yellow-background]*XML size copy* +
+[yellow-background]*Could this be used for compression similar as for metadata block type 0x0019?*
+| 172 | 4 | | [yellow-background]*Unknown*
+| 176 | 8 | | Volume group number of blocks +
+[yellow-background]*Or physical volume number of blocks* +
+[yellow-background]*Or block number of physical volume backup volume header*
+| 184 | 8 | | Number of unknown values?
+| 192 | [yellow-background]*24 x number ?* | | [yellow-background]*Array of unknown values?* +
+[yellow-background]*First 8 bytes related to revision number of block? *
+| 8 | | [yellow-background]*Second 8 bytes?*
+[yellow-background]*0x00 => * +
+[yellow-background]*0x01 => encrypted* +
+[yellow-background]*0x02 => decrypting*
+|===
+
+The metadata block data type 0x0011 unknown value is 24 bytes in size and
+consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| 0 | 8 | | [yellow-background]*Unknown (metadata block group)*
+| 8 | 8 | | [yellow-background]*Unknown*
+| 16 | 8 | | [yellow-background]*Unknown*
+|===
+
+....
+Block nr: 0x005f70c8
+
+00000040: 00 00 40 00 03 00 00 00                            ..@..... .6.x....
+
+00000040:                          c3 36 c3 78 ff ff ff ff   ..@..... .6.x....
+00000050: 07 57 7e c0 00 00 b4 00  00 00 b4 00 10 27 01 00   .W~..... .....'..
+00000060: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00000090: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+000000a0: 00 00 00 00 00 00 00 00                            ........ ........
+
+Number of 4 byte values?
+000000a0:                          0c 00 00 00 0d 00 00 00   ........ ........
+000000b0: 40 00 00 00 30 00 01 00  01 00 00 00 01 00 01 00   @...0... ........
+000000c0: 00 08 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+000000d0: 00 00 00 00 00 00 00 00  00 00 00 00               ........ ..... ..
+
+000000d0:                                      00 20 00 00   ........ ..... ..
+000000e0: 30 20 00 00 c0 01 00 00  c0 01 00 00 00 00 00 00   0 ...... ........
+000000f0: c9 80 5f 00 00 00 00 00  0a 00 00 00 00 00 00 00   .._..... ........
+
+Encrypted metadata block descriptor offset
+Offset of XML
+Size of XML
+
+Volume header block number?
+
+Number of values in XML? Each value is 24 bytes? Some kind of index?
+Related to unknown2 in block header?
+00000100: cd 00 00 00 00 00 00 00  13 00 00 00 00 00 00 00   ........ ........
+00000110: 2b 00 00 00 00 00 00 00  cc 00 00 00 00 00 00 00   +....... ........
+00000120: 13 00 00 00 00 00 00 00  27 00 00 00 00 00 00 00   ........ '.......
+00000130: cb 00 00 00 00 00 00 00  13 00 00 00 00 00 00 00   ........ ........
+00000140: 02 00 00 00 00 00 00 00  c8 00 00 00 00 00 00 00   ........ ........
+00000150: 12 00 00 00 00 00 00 00  17 00 00 00 00 00 00 00   ........ ........
+00000160: c5 00 00 00 00 00 00 00  12 00 00 00 00 00 00 00   ........ ........
+00000170: 08 00 00 00 00 00 00 00  c2 00 00 00 00 00 00 00   ........ ........
+00000180: 11 00 00 00 00 00 00 00  35 00 00 00 00 00 00 00   ........ 5.......
+00000190: bf 00 00 00 00 00 00 00  11 00 00 00 00 00 00 00   ........ ........
+000001a0: 26 00 00 00 00 00 00 00  bc 00 00 00 00 00 00 00   &....... ........
+000001b0: 11 00 00 00 00 00 00 00  17 00 00 00 00 00 00 00   ........ ........
+000001c0: b9 00 00 00 00 00 00 00  11 00 00 00 00 00 00 00   ........ ........
+000001d0: 08 00 00 00 00 00 00 00  b6 00 00 00 00 00 00 00   ........ ........
+000001e0: 10 00 00 00 00 00 00 00  35 00 00 00 00 00 00 00   ........ 5.......
+
+000001f0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+....
+
+....
+Related to block hierarchy?
+
+libfvde_metadata_block_read: unknown2                                   : 0x00000002
+
+000000c0: 02 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+000000d0: 00 00 00 00 00 00 00 00  02 00 00 00 00 00 00 00   ........ ........
+000000e0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+000000f0: 02 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000100: 00 00 00 00 00 00 00 00  02 00 00 00 00 00 00 00   ........ ........
+00000110: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+libfvde_metadata_block_read: unknown2                                   : 0x0000002f
+
+000000c0: 2f 00 00 00 00 00 00 00  09 00 00 00 00 00 00 00   /....... ........
+000000d0: 17 00 00 00 00 00 00 00  2c 00 00 00 00 00 00 00   ........ ,.......
+000000e0: 09 00 00 00 00 00 00 00  08 00 00 00 00 00 00 00   ........ ........
+000000f0: 29 00 00 00 00 00 00 00  08 00 00 00 00 00 00 00   )....... ........
+00000100: 35 00 00 00 00 00 00 00  26 00 00 00 00 00 00 00   5....... &.......
+00000110: 08 00 00 00 00 00 00 00  26 00 00 00 00 00 00 00   ........ &.......
+00000120: 23 00 00 00 00 00 00 00  08 00 00 00 00 00 00 00   #....... ........
+00000130: 17 00 00 00 00 00 00 00  20 00 00 00 00 00 00 00   ........  .......
+00000140: 08 00 00 00 00 00 00 00  08 00 00 00 00 00 00 00   ........ ........
+00000150: 1d 00 00 00 00 00 00 00  07 00 00 00 00 00 00 00   ........ ........
+00000160: 35 00 00 00 00 00 00 00  1a 00 00 00 00 00 00 00   5....... ........
+00000170: 07 00 00 00 00 00 00 00  26 00 00 00 00 00 00 00   ........ &.......
+00000180: 17 00 00 00 00 00 00 00  07 00 00 00 00 00 00 00   ........ ........
+00000190: 17 00 00 00 00 00 00 00  14 00 00 00 00 00 00 00   ........ ........
+000001a0: 07 00 00 00 00 00 00 00  08 00 00 00 00 00 00 00   ........ ........
+000001b0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+24 byte structures:
+0 - 8 unknown
+8 - 8 unknown
+12 - 8 unknown
+....
+
+....
+00000000: 00 00 40 00 03 00 00 00  09 ef 44 3f ff ff ff ff   ..@..... ..D?....
+00000010: 07 57 7e c0 01 14 05 02  01 32 05 02 10 27 01 00   .W~..... .2...'..
+00000020: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000030: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000040: 00 00 00 00 00 00 00 00  01 14 05 02 01 32 05 02   ........ .....2..
+00000050: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000060: 00 00 00 00 00 00 00 00  0c 00 00 00 0d 00 00 00   ........ ........
+00000070: 40 00 00 00 30 00 01 00  01 00 00 00 01 00 01 00   @...0... ........
+00000080: 00 0c 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000090: 00 00 00 00 00 00 00 00  00 00 00 00 00 20 00 00   ........ ..... ..
+000000a0: 30 20 00 00 02 02 00 00  02 02 00 00 00 00 00 00   0 ...... ........
+000000b0: 12 cc c0 01 00 00 00 00  0a 00 00 00 00 00 00 00   ........ ........
+000000c0: 6d 2f 00 00 00 00 00 00  1c 00 00 00 00 00 00 00   m/...... ........
+000000d0: 03 00 00 00 00 00 00 00  6b 2f 00 00 00 00 00 00   ........ k/......
+000000e0: 29 00 00 00 00 00 00 00  35 00 00 00 00 00 00 00   )....... 5.......
+000000f0: 6a 2f 00 00 00 00 00 00  29 00 00 00 00 00 00 00   j/...... ).......
+00000100: 31 00 00 00 00 00 00 00  69 2f 00 00 00 00 00 00   1....... i/......
+00000110: 29 00 00 00 00 00 00 00  2d 00 00 00 00 00 00 00   )....... -.......
+00000120: 68 2f 00 00 00 00 00 00  29 00 00 00 00 00 00 00   h/...... ).......
+00000130: 29 00 00 00 00 00 00 00  65 2f 00 00 00 00 00 00   )....... e/......
+00000140: 22 00 00 00 00 00 00 00  0e 00 00 00 00 00 00 00   "....... ........
+00000150: 64 2f 00 00 00 00 00 00  22 00 00 00 00 00 00 00   d/...... ".......
+00000160: 0a 00 00 00 00 00 00 00  63 2f 00 00 00 00 00 00   ........ c/......
+00000170: 22 00 00 00 00 00 00 00  06 00 00 00 00 00 00 00   "....... ........
+00000180: 62 2f 00 00 00 00 00 00  22 00 00 00 00 00 00 00   b/...... ".......
+00000190: 02 00 00 00 00 00 00 00  5f 2f 00 00 00 00 00 00   ........ _/......
+000001a0: 0a 00 00 00 00 00 00 00  26 00 00 00 00 00 00 00   ........ &.......
+000001b0: c0 1f 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+000001c0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001f70: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00001f80: 00 d2 b8 2b 63 00 00 00  77 b8 85 00 00 00 00 00   ...+c... w.......
+00001f90: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00001fa0: 00 3e 17 b0 48 00 00 00  41 d8 64 00 00 00 00 00   .>..H... A.d.....
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+....
+
+[yellow-background]*Seen encrypted data in the metadata block in 10.10.
+Is this remnant data?*
+
+=== Volume groups descriptor
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 8 | | [yellow-background]*Unknown (empty values)*
+| 8 | 8 | | Encrypted metadata number of blocks
+| 16 | 8 | | [yellow-background]*Unknown (empty values)*
+| 24 | 8 | 0x02 | [yellow-background]*number of encrypted metadata block numbers?*
+| 32 | 8 | | Primary encrypted metadata block number
+| 40 | 8 | | Secondary encrypted metadata block number
+|===
+
+....
+00002000: 00 00 00 00 00 00 00 00  00 10 00 00 00 00 00 00   ........ ........
+00002010: 00 00 00 00 00 00 00 00  02 00 00 00 00 00 00 00   ........ ........
+00002020: c8 60 5f 00 00 00 00 00  c8 50 5f 00 00 00 00 00   .`_..... .P_.....
+....
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 48 | ... | [yellow-background]*XML plist*
+|===
+
+==== Core Storage XML plist data
+The Core Storage XML plist data consists of a single dict containing the
+following keys.
+
+[cols="1,1",options="header"]
+|===
+| Key | Description
+| com.apple.corestorage.label.sequence | The sequence number +
+Consists of a 32-bits integer
+| com.apple.corestorage.lvg.uuid | The logical volume group identifier +
+Consists of a string containing an UUID
+| com.apple.corestorage.lvg.name | Name of the logical volume group +
+Contains a string
+| com.apple.corestorage.pv.uuid | The physical volume identifier +
+Consists of a string containing an UUID or "internal error"
+| com.apple.corestorage.lvg.physicalVolumes | The physical volume identifiers +
+Consist of an array containing strings of UUIDs
+| com.apple.corestorage.lvg.ssd-unit-nbytes | [yellow-background]*Unknown*
+|===
+
+[yellow-background]*Same as XML plist data in block 0x0012*
+
+[yellow-background]*Is sequence number 3 the correct one for the LV size?*
+
+== Encrypted metadata (section)
+The encrypted metadata is encrypted with:
+
+* the primary key is the the physical volume identifier
+* the secondary key is 0
+* the physical volume identifier
+* block size of 8192
+
+[NOTE]
+Some blocks are actually 0-byte filled and not encrypted.
+
+The encrypted metadata consists of:
+
+* encrypted metadata blocks of various block types
+* trailing zero byte filled data
+* [yellow-background]*unknown trailing data*
+
+[yellow-background]*Seen other trailing data?*
+
+=== LVFwiped
+Some blocks contain the string "LVFwiped" where the checksum and initial value
+are normally stored. They largely seem to have the block header values set but
+don't contain data.
+
+[yellow-background]*Notes: 10.8 encrypted*
+....
+checksum                               : 0x7746564c
+initial value                          : 0x64657069
+version                                : 1
+block type                             : 0x0024
+unknown1                               : 0x01120400
+unknown2                               : 0x00000002 (Does not seem to change)
+Incremented by +1 in following LVFwiped blocks
+unknown3                               : 0x00000030
+unknown4                               : 0x00000030 (not always similar as previous value)
+unknown5                               : 0x00000009 (Does not seem to change)
+block size                             : 8192
+unknown6                               : 0x00000006 (Does not seem to change)
+unknown7                               : 0x00000000
+....
+
+=== Metadata block data type 0x0010
+....
+Volume block backup ?
+
+00000000: 00 00 00 00 00 00 00 00  f9 d2 04 cb ff ff ff ff   ........ ........
+00000010: 01 00 10 00 01 32 05 02  01 00 00 00 00 00 00 00   .....2.. ........
+00000020: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000030: 00 00 00 00 00 00 00 00  00 02 00 00 00 00 00 00   ........ ........
+00000040: 00 00 00 00 00 00 00 00  00 60 ff 3f 00 00 00 00   ........ .`.?....
+00000050: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000060: 43 53 01 00 00 00 04 00  00 10 00 00 00 00 40 00   CS...... ......@.
+00000070: 01 00 00 00 00 00 00 00  01 04 00 00 00 00 00 00   ........ ........
+00000080: f5 f7 03 00 00 00 00 00  f5 fb 03 00 00 00 00 00   ........ ........
+00000090: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+000000a0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+000000b0: 10 00 00 00 02 00 00 00  be 89 0b 77 8c 79 48 af   ........ ...w.yH.
+000000c0: 76 9e 3b ec 80 2f 08 5e  00 00 00 00 00 00 00 00   v.;../.^ ........
+000000d0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00000120: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000130: 00 00 00 00 00 00 00 00  08 5a 29 d7 8d cb 4c 84   ........ .Z)...L.
+00000140: b5 09 16 bb 7d 08 88 61  fb c0 ca c7 a4 be 4a bd   ....}..a ......J.
+00000150: 8a 6e 7f 5e 96 ae 41 1e  00 00 00 00 00 00 00 00   .n.^..A. ........
+00000160: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+....
+
+=== Metadata block data type 0x0011
+
+....
+00000000: 00 00 40 00 03 00 00 00  21 17 de aa ff ff ff ff   ..@..... !.......
+00000010: 07 57 7e c0 00 0d b6 00  00 0d b6 00 10 27 01 00   .W~..... .....'..
+00000020: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00000050: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000060: 00 00 00 00 00 00 00 00  0c 00 00 00 0d 00 00 00   ........ ........
+00000070: 40 00 00 00 30 00 01 00  01 00 00 00 01 00 01 00   @...0... ........
+00000080: 00 08 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000090: 00 00 00 00 00 00 00 00  00 00 00 00 00 20 00 00   ........ ..... ..
+000000a0: 30 20 00 00 bf 01 00 00  bf 01 00 00 00 00 00 00   0 ...... ........
+000000b0: db 21 5d 00 00 00 00 00  0a 00 00 00 00 00 00 00   .!]..... ........
+000000c0: 03 00 00 00 00 00 00 00  01 00 00 00 00 00 00 00   ........ ........
+000000d0: 2b 00 00 00 00 00 00 00  02 00 00 00 00 00 00 00   +....... ........
+000000e0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+000000f0: 02 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000100: 00 00 00 00 00 00 00 00  02 00 00 00 00 00 00 00   ........ ........
+00000110: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000120: 02 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000130: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+....
+
+=== Metadata block data type 0x0012
+
+....
+Non-system volume only ?
+00000000: 00 00 00 00 00 00 00 00  00 0a 00 00 00 00 00 00   ........ ........
+00000010: 00 00 00 00 00 00 00 00  02 00 00 00 00 00 00 00   ........ ........
+00000020: 01 08 00 00 00 00 00 00  01 12 00 00 00 00 00 00   ........ ........
+
+00000030: 3c 64 69 63 74 3e 3c 6b  65 79 3e 63 6f 6d 2e 61   <dict><k ey>com.a
+00000040: 70 70 6c 65 2e 63 6f 72  65 73 74 6f 72 61 67 65   pple.cor estorage
+00000050: 2e 6c 61 62 65 6c 2e 73  65 71 75 65 6e 63 65 3c   .label.s equence<
+00000060: 2f 6b 65 79 3e 3c 69 6e  74 65 67 65 72 20 73 69   /key><in teger si
+00000070: 7a 65 3d 22 33 32 22 3e  30 78 31 3c 2f 69 6e 74   ze="32"> 0x1</int
+00000080: 65 67 65 72 3e 3c 6b 65  79 3e 63 6f 6d 2e 61 70   eger><ke y>com.ap
+00000090: 70 6c 65 2e 63 6f 72 65  73 74 6f 72 61 67 65 2e   ple.core storage.
+000000a0: 6c 76 67 2e 75 75 69 64  3c 2f 6b 65 79 3e 3c 73   lvg.uuid </key><s
+000000b0: 74 72 69 6e 67 3e 41 43  43 35 33 34 35 37 2d 34   tring>AC C53457-4
+000000c0: 30 44 31 2d 34 31 37 43  2d 39 35 38 41 2d 44 43   0D1-417C -958A-DC
+000000d0: 36 41 30 34 43 46 43 42  42 42 3c 2f 73 74 72 69   6A04CFCB BB</stri
+000000e0: 6e 67 3e 3c 6b 65 79 3e  63 6f 6d 2e 61 70 70 6c   ng><key> com.appl
+000000f0: 65 2e 63 6f 72 65 73 74  6f 72 61 67 65 2e 6c 76   e.corest orage.lv
+00000100: 67 2e 6e 61 6d 65 3c 2f  6b 65 79 3e 3c 73 74 72   g.name</ key><str
+00000110: 69 6e 67 3e 54 65 73 74  4c 56 47 3c 2f 73 74 72   ing>Test LVG</str
+00000120: 69 6e 67 3e 3c 6b 65 79  3e 63 6f 6d 2e 61 70 70   ing><key >com.app
+00000130: 6c 65 2e 63 6f 72 65 73  74 6f 72 61 67 65 2e 70   le.cores torage.p
+00000140: 76 2e 75 75 69 64 3c 2f  6b 65 79 3e 3c 73 74 72   v.uuid</ key><str
+00000150: 69 6e 67 3e 69 6e 74 65  72 6e 61 6c 20 65 72 72   ing>inte rnal err
+00000160: 6f 72 3c 2f 73 74 72 69  6e 67 3e 3c 6b 65 79 3e   or</stri ng><key>
+00000170: 63 6f 6d 2e 61 70 70 6c  65 2e 63 6f 72 65 73 74   com.appl e.corest
+00000180: 6f 72 61 67 65 2e 6c 76  67 2e 70 68 79 73 69 63   orage.lv g.physic
+00000190: 61 6c 56 6f 6c 75 6d 65  73 3c 2f 6b 65 79 3e 3c   alVolume s</key><
+000001a0: 61 72 72 61 79 3e 3c 73  74 72 69 6e 67 3e 32 32   array><s tring>22
+000001b0: 43 34 44 38 46 32 2d 32  42 33 41 2d 34 43 33 37   C4D8F2-2 B3A-4C37
+000001c0: 2d 38 35 43 42 2d 42 46  31 41 38 42 39 42 34 43   -85CB-BF 1A8B9B4C
+000001d0: 36 45 3c 2f 73 74 72 69  6e 67 3e 3c 2f 61 72 72   6E</stri ng></arr
+000001e0: 61 79 3e 3c 2f 64 69 63  74 3e 00 00 00 00 00 00   ay></dic t>......
+000001f0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+....
+
+==== XML plist data
+The XML plist data consists of a single dict containing the following keys.
+
+[cols="1,1",options="header"]
+|===
+| Key | Description
+| com.apple.corestorage.label.sequence | The sequence number +
+Consists of a 32-bits integer
+| com.apple.corestorage.lvg.uuid | The logical volume group identifier +
+Consists of a string containing an UUID
+| com.apple.corestorage.lvg.name | Name of the logical volume group +
+Contains a string
+| com.apple.corestorage.pv.uuid | The physical volume identifier +
+Consists of a string containing an UUID or "internal error"
+| com.apple.corestorage.lvg.physicalVolumes | The physical volume identifiers +
+Consits of an array containing strings of UUIDs
+|===
+
+[yellow-background]*Same as XML plist data in block 0x0011*
+
+=== Metadata block data type 0x0013
+Metadata block data type 0x0013 contains information about [yellow-background]*TODO: describe*
+
+The metadata block data is variable in size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 4 | | Checksum +
+[yellow-background]*Contains a CRC-32 of bytes ?*
+| 4 | 4 | 0xffffffff | Initial value of the CRC-32
+| 8 | 16 | | Volume group identifier (com.apple.corestorage.lv.groupUUID) +
+Contains a UUID
+| 24 | 8 | 0x13 +
+0x1f | [yellow-background]*Unknown*
+| 32 | 8 | 1 | [yellow-background]*Unknown
+| 40 | 4 | | [yellow-background]*Unknown
+| 44 | 4 | | [yellow-background]*Unknown
+| 48 | 4 | 0x01 | [yellow-background]*Unknown (index1 ?)*
+| 52 | 4 | | [yellow-background]*Unknown (index2 ?)*
+| 56 | 4 | | [yellow-background]*Unknown (number of entries 1)*
+| 60 | 4 | | [yellow-background]*Unknown (number of entries 2)*
+| 64 | 4 | | [yellow-background]*Unknown (index5, index2 + 1 ?)*
+| 68 | 4 | | [yellow-background]*Unknown (empty values)*
+| 72 | 8 | | [yellow-background]*Unknown*
+| 80 | 4 | 1 | [yellow-background]*Unknown*
+| 84 | 4 | 1 | [yellow-background]*Unknown*
+| 88 | 8 | | [yellow-background]*Unknown*
+| 96 | 8 | | [yellow-background]*Unknown*
+| 104 | 8 | | [yellow-background]*Unknown*
+| 112 | 8 | | [yellow-background]*Unknown*
+| 120 | 4 | | [yellow-background]*Unknown* +
+Number of blocks to next 0x0013 block? Does not seem consistent
+| 122 | 2 | | [yellow-background]*Unknown* +
+Seen: 0, 1 or 2
+| 122 | 2 | | [yellow-background]*Unknown* +
+Seen: 0 or 1
+| 128 | ... | | [yellow-background]*Unknown (Array of entries 1)*
+| ... | ... | | [yellow-background]*Unknown (Array of entries 2)*
+|===
+
+[yellow-background]*TODO: Unknown array entry1 relates to metadata block header unknown3*
+
+....
+
+00000040: af 17 90 bf ff ff ff ff  46 ea fe 2b 6d da 4e af   ........ F..+m.N.
+00000050: ab fc 22 d3 e8 3d cb 60  1f 00 00 00 00 00 00 00   .."..=.` ........
+00000060: 01 00 00 00 00 00 00 00  00 00 00 80 30 00 00 00   ........ ....0...
+00000070: 01 00 00 00 2a 00 00 00  2a 00 00 00 2a 00 00 00   ....*... *...*...
+00000080: 2b 00 00 00 00 00 00 00  ff ff ff ff ff ff ff 7f   +....... ........
+00000090: 01 00 00 00 01 00 00 00  20 00 00 00 00 00 00 00   ........  .......
+000000a0: 00 00 00 00 00 00 00 00  1f 00 00 00 00 00 00 00   ........ ........
+000000b0: 1f 00 00 00 00 00 00 00  30 00 00 00 02 00 01 00   ........ 0.......
+
+number of values
+000000c0: 01 00 00 00 00 00 00 00  02 00 00 00 00 00 00 00   ........ ........
+000000d0: 03 00 00 00 00 00 00 00  04 00 00 00 00 00 00 00   ........ ........
+
+00000040: 77 c0 04 1c ff ff ff ff  ac c5 34 57 40 d1 41 7c   w....... ..4W@.A|
+00000050: 95 8a dc 6a 04 cf cb bb  13 00 00 00 00 00 00 00   ...j.... ........
+00000060: 01 00 00 00 00 00 00 00  00 00 00 80 0c 00 00 00   ........ ........
+00000070: 01 00 00 00 06 00 00 00  06 00 00 00 06 00 00 00   ........ ........
+00000080: 07 00 00 00 00 00 00 00  ff ff ff ff ff ff ff 7f   ........ ........
+
+00000090: 01 00 00 00 01 00 00 00  14 00 00 00 00 00 00 00   ........ ........
+000000a0: 00 00 00 00 00 00 00 00  13 00 00 00 00 00 00 00   ........ ........
+000000b0: 13 00 00 00 00 00 00 00  0c 00 00 00 02 00 01 00   ........ ........
+
+000000c0: 01 00 00 00 00 00 00 00  02 00 00 00 00 00 00 00   ........ ........
+000000d0: 03 00 00 00 00 00 00 00  04 00 00 00 00 00 00 00   ........ ........
+000000e0: 05 00 00 00 00 00 00 00  06 00 00 00 00 00 00 00   ........ ........
+
+relative block numbers?
+000000f0: 01 00 00 00 00 00 00 00  02 00 00 00 00 00 00 00   ........ ........
+00000100: 03 00 00 00 00 00 00 00  04 00 00 00 00 00 00 00   ........ ........
+00000110: 05 00 00 00 00 00 00 00  06 00 00 00 00 00 00 00   ........ ........
+
+00000120: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001ff0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+00000000: 8a c9 10 e0 ff ff ff ff  46 ea fe 2b 6d da 4e af   ........ F..+m.N.
+00000010: ab fc 22 d3 e8 3d cb 60  1f 00 00 00 00 00 00 00   .."..=.` ........
+00000020: 01 00 00 00 00 00 00 00  00 00 00 80 05 00 00 00   ........ ........
+00000030: 01 00 00 00 01 00 00 00  01 00 00 00 00 00 00 00   ........ ........
+00000040: 2b 00 00 00 00 00 00 00  ff ff ff ff ff ff ff 7f   +....... ........
+00000050: 01 00 00 00 01 00 00 00  20 00 00 00 00 00 00 00   ........  .......
+00000060: 00 00 00 00 00 00 00 00  1f 00 00 00 00 00 00 00   ........ ........
+00000070: 1f 00 00 00 00 00 00 00  35 00 00 00 01 00 00 00   ........ 5.......
+00000080: 06 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000090: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+00000000: 01 7e ac c1 ff ff ff ff  46 ea fe 2b 6d da 4e af   .~...... F..+m.N.
+00000010: ab fc 22 d3 e8 3d cb 60  1f 00 00 00 00 00 00 00   .."..=.` ........
+00000020: 01 00 00 00 00 00 00 00  00 00 00 00 0b 00 00 00   ........ ........
+00000030: 02 00 00 00 20 00 00 00  0a 00 00 00 01 00 00 00   .... ... ........
+00000040: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000050: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000060: 00 00 00 00 00 00 00 00  1f 00 00 00 00 00 00 00   ........ ........
+00000070: 1e 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000080: 01 00 00 00 00 00 00 00  09 00 00 00 00 00 00 00   ........ ........
+00000090: 0a 00 00 00 00 00 00 00  0b 00 00 00 00 00 00 00   ........ ........
+000000a0: 0c 00 00 00 00 00 00 00  0d 00 00 00 00 00 00 00   ........ ........
+000000b0: 0e 00 00 00 00 00 00 00  0f 00 00 00 00 00 00 00   ........ ........
+000000c0: 10 00 00 00 00 00 00 00  11 00 00 00 00 00 00 00   ........ ........
+000000d0: 2b 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   +....... ........
+000000e0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+00000000: 69 96 43 23 ff ff ff ff  46 ea fe 2b 6d da 4e af   i.C#.... F..+m.N.
+00000010: ab fc 22 d3 e8 3d cb 60  00 00 00 00 00 00 00 00   .."..=.` ........
+00000020: 02 00 00 00 00 00 00 00  00 00 00 80 04 00 00 00   ........ ........
+00000030: 01 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000040: 2c 00 00 00 00 00 00 00  ff ff ff ff ff ff ff 7f   ,....... ........
+00000050: 01 00 00 00 01 00 00 00  20 00 00 00 00 00 00 00   ........  .......
+00000060: 01 00 00 00 00 00 00 00  1f 00 00 00 00 00 00 00   ........ ........
+00000070: 1e 00 00 00 00 00 00 00  1b 00 00 00 01 00 00 00   ........ ........
+00000080: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+00000000: 31 61 1f 5e ff ff ff ff  46 ea fe 2b 6d da 4e af   1a.^.... F..+m.N.
+00000010: ab fc 22 d3 e8 3d cb 60  00 00 00 00 00 00 00 00   .."..=.` ........
+00000020: 02 00 00 00 00 00 00 00  00 00 00 80 04 00 00 00   ........ ........
+00000030: 01 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000040: 2c 00 00 00 00 00 00 00  ff ff ff ff ff ff ff 7f   ,....... ........
+00000050: 01 00 00 00 01 00 00 00  20 00 00 00 00 00 00 00   ........  .......
+00000060: 01 00 00 00 00 00 00 00  1f 00 00 00 00 00 00 00   ........ ........
+00000070: 1e 00 00 00 00 00 00 00  1f 00 00 00 01 00 00 00   ........ ........
+00000080: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+00000000: 88 06 c1 d9 ff ff ff ff  a0 24 e9 33 e5 4c 43 37   ........ .$.3.LC7
+00000010: 9a ab da 90 f2 78 ee 64  1f 00 00 00 00 00 00 00   .....x.d ........
+00000020: 01 00 00 00 00 00 00 00  00 00 00 80 15 00 00 00   ........ ........
+00000030: 01 00 00 00 11 00 00 00  11 00 00 00 08 00 00 00   ........ ........
+00000040: 14 00 00 00 00 00 00 00  0b 00 00 00 00 00 00 00   ........ ........
+00000050: 01 00 00 00 01 00 00 00  20 00 00 00 00 00 00 00   ........  .......
+00000060: 00 00 00 00 00 00 00 00  1f 00 00 00 00 00 00 00   ........ ........
+00000070: 1f 00 00 00 00 00 00 00  33 00 00 00 01 00 00 00   ........ 3.......
+00000080: 01 00 00 00 00 00 00 00  02 00 00 00 00 00 00 00   ........ ........
+00000090: 04 00 00 00 00 00 00 00  05 00 00 00 00 00 00 00   ........ ........
+000000a0: 06 00 00 00 00 00 00 00  07 00 00 00 00 00 00 00   ........ ........
+000000b0: 08 00 00 00 00 00 00 00  09 00 00 00 00 00 00 00   ........ ........
+000000c0: 0a 00 00 00 00 00 00 00  0c 00 00 00 00 00 00 00   ........ ........
+000000d0: 0d 00 00 00 00 00 00 00  0e 00 00 00 00 00 00 00   ........ ........
+000000e0: 0f 00 00 00 00 00 00 00  10 00 00 00 00 00 00 00   ........ ........
+000000f0: 11 00 00 00 00 00 00 00  12 00 00 00 00 00 00 00   ........ ........
+00000100: 13 00 00 00 00 00 00 00  0d 00 00 00 00 00 00 00   ........ ........
+00000110: 0e 00 00 00 00 00 00 00  0f 00 00 00 00 00 00 00   ........ ........
+00000120: 10 00 00 00 00 00 00 00  0b 00 00 00 00 00 00 40   ........ .......@
+00000130: 11 00 00 00 00 00 00 00  12 00 00 00 00 00 00 00   ........ ........
+00000140: 13 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000150: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+....
+
+=== Metadata block data type 0x0014
+Metadata block data type 0x0014 contains information about [yellow-background]*TODO: describe*
+
+The metadata block data is variable in size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 4 | | Checksum +
+[yellow-background]*Contains a CRC-32 of bytes ?*
+| 4 | 4 | 0xffffffff | Initial value of the CRC-32
+| 8 | 16 | | Volume group identifier (com.apple.corestorage.lv.groupUUID) +
+Contains a UUID
+| 24 | 8 | 0x13 +
+0x1f | [yellow-background]*Unknown*
+| 32 | 8 | 1 | [yellow-background]*Unknown
+| 40 | 4 | | [yellow-background]*Unknown
+| 44 | 4 | | [yellow-background]*Unknown
+| 48 | 4 | 0x01 | [yellow-background]*Unknown (index1 ?)*
+| 52 | 4 | | [yellow-background]*Unknown (index2 ?)*
+| 56 | 4 | | [yellow-background]*Unknown (number of entries 1)*
+| 60 | 4 | | [yellow-background]*Unknown (number of entries 2)*
+| 64 | 4 | | [yellow-background]*Unknown (index5, index2 + 1 ?)*
+| 68 | 4 | | [yellow-background]*Unknown (empty values)*
+| 72 | 8 | | [yellow-background]*Unknown*
+| 80 | 4 | 1 | [yellow-background]*Unknown*
+| 84 | 4 | 1 | [yellow-background]*Unknown*
+| 88 | 8 | | [yellow-background]*Unknown*
+| 96 | 8 | | [yellow-background]*Unknown*
+| 104 | 8 | | [yellow-background]*Unknown*
+| 112 | 8 | | [yellow-background]*Unknown*
+| 120 | 4 | | [yellow-background]*Unknown* +
+Number of blocks to next 0x0014 block? Does not seem consistent
+| 122 | 2 | | [yellow-background]*Unknown* +
+Seen: 0, 1 or 2
+| 122 | 2 | | [yellow-background]*Unknown* +
+Seen: 0 or 1
+| 128 | ... | | [yellow-background]*Unknown (Array of entries 1)*
+| ... | ... | | [yellow-background]*Unknown (Array of entries 2)*
+|===
+
+....
+00000000: 39 c2 e3 4d ff ff ff ff  ff 8f c7 af 5e 33 43 45   9..M.... ....^3CE
+00000010: aa 73 5c fb 28 0a fd 08  02 00 00 00 00 00 00 00   .s\.(... ........
+00000020: 07 00 00 00 00 00 00 00  00 00 00 00 0b 00 00 00   ........ ........
+00000030: 00 00 00 00 00 00 00 00                            ........ ........
+
+00000030:                          0a 00 00 00 00 00 00 00   ........ ........
+00000040: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00000070: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000080: 34 00 00 00 00 00 00 00  35 00 00 00 00 00 00 00   4....... 5.......
+00000090: 36 00 00 00 00 00 00 00  37 00 00 00 00 00 00 00   6....... 7.......
+000000a0: 38 00 00 00 00 00 00 00  39 00 00 00 00 00 00 00   8....... 9.......
+000000b0: 3a 00 00 00 00 00 00 00  3b 00 00 00 00 00 00 00   :....... ;.......
+000000c0: 3c 00 00 00 00 00 00 00  41 00 00 00 00 00 00 00   <....... A.......
+000000d0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+....
+
+....
+00000000: ab b5 13 84 ff ff ff ff  ff 8f c7 af 5e 33 43 45   ........ ....^3CE
+00000010: aa 73 5c fb 28 0a fd 08  02 00 00 00 00 00 00 00   .s\.(... ........
+00000020: 04 00 00 00 00 00 00 00  00 00 00 00 19 00 00 00   ........ ........
+00000030: 00 00 00 00 00 00 00 00                            ........ ........
+
+Number of entries:
+00000030:                          18 00 00 00 00 00 00 00   ........ ........
+
+00000040: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00000070: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+Entries:
+00000080: 26 00 00 00 00 00 00 00  27 00 00 00 00 00 00 00   &....... '.......
+00000090: 28 00 00 00 00 00 00 00  29 00 00 00 00 00 00 00   (....... ).......
+000000a0: 2a 00 00 00 00 00 00 00  2b 00 00 00 00 00 00 00   *....... +.......
+000000b0: 2c 00 00 00 00 00 00 00  2d 00 00 00 00 00 00 00   ,....... -.......
+000000c0: 2e 00 00 00 00 00 00 00  2f 00 00 00 00 00 00 00   ........ /.......
+000000d0: 30 00 00 00 00 00 00 00  31 00 00 00 00 00 00 00   0....... 1.......
+000000e0: 32 00 00 00 00 00 00 00  33 00 00 00 00 00 00 00   2....... 3.......
+000000f0: 34 00 00 00 00 00 00 00  35 00 00 00 00 00 00 00   4....... 5.......
+00000100: 36 00 00 00 00 00 00 00  37 00 00 00 00 00 00 00   6....... 7.......
+00000110: 38 00 00 00 00 00 00 00  39 00 00 00 00 00 00 00   8....... 9.......
+00000120: 3a 00 00 00 00 00 00 00  3b 00 00 00 00 00 00 00   :....... ;.......
+00000130: 3c 00 00 00 00 00 00 00  41 00 00 00 00 00 00 00   <....... A.......
+00000140: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+....
+
+....
+checksum
+00000000: 7c 22 33 58                                        |"3X....  ..P..Lz
+
+initial value
+00000000:             ff ff ff ff                            |"3X....  ..P..Lz
+
+logical volume group identifier
+00000000:                          20 82 c6 50 8b b4 4c 7a   |"3X....  ..P..Lz
+00000010: 8a 0c 9e 08 2f e9 0a 26                            ..../..& ........
+
+00000010:                          1c 00 00 00 00 00 00 00   ..../..& ........
+00000020: 00 00 00 00 00 00 00 00  00 00 00 00 1a 00 00 00   ........ ........
+00000030: 00 00 00 00 00 00 00 00                            ........ ........
+
+Number of entries:
+00000030:                          16 00 00 00 00 00 00 00   ........ ........
+00000040: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00000070: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000080: 44 00 00 00 00 00 00 00  45 00 00 00 00 00 00 00   D....... E.......
+00000090: 46 00 00 00 00 00 00 00  47 00 00 00 00 00 00 00   F....... G.......
+000000a0: 48 00 00 00 00 00 00 00  49 00 00 00 00 00 00 00   H....... I.......
+000000b0: 4a 00 00 00 00 00 00 00  4b 00 00 00 00 00 00 00   J....... K.......
+000000c0: 4c 00 00 00 00 00 00 00  4d 00 00 00 00 00 00 00   L....... M.......
+000000d0: 4e 00 00 00 00 00 00 00  4f 00 00 00 00 00 00 00   N....... O.......
+000000e0: 50 00 00 00 00 00 00 00  51 00 00 00 00 00 00 00   P....... Q.......
+000000f0: 52 00 00 00 00 00 00 00  53 00 00 00 00 00 00 00   R....... S.......
+00000100: 54 00 00 00 00 00 00 00  55 00 00 00 00 00 00 00   T....... U.......
+00000110: 56 00 00 00 00 00 00 00  57 00 00 00 00 00 00 00   V....... W.......
+00000120: 58 00 00 00 00 00 00 00  93 00 00 00 00 00 00 00   X....... ........
+00000130: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+....
+
+=== Metadata block data type 0x0016
+Metadata block data type 0x0016 contains information about [yellow-background]*TODO: describe*
+
+The metadata block data is variable in size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 4 | | [yellow-background]*Number of entries*
+| 4 | ... | | [yellow-background]*Array of entries*
+|===
+
+[yellow-background]*The array entry is 12 bytes of size?*
+
+....
+Non-system only ?
+* number of entries
+00000000: 07 00 00 00                                        ........ ........
+
+* unknown 8 bytes
+* unknown 4 bytes
+00000000:             ff ff ff ff  ff ff ff ff 01 00 00 00   ........ ........
+
+00000010: 01 00 00 00 00 00 00 80  01 00 00 00               ........ ........
+
+00000010:                                      02 00 00 00   ........ ........
+00000020: 00 00 00 80 01 00 00 00  03 00 00 00 00 00 00 80   ........ ........
+00000030: 01 00 00 00 04 00 00 00  00 00 00 80 01 00 00 00   ........ ........
+00000040: 05 00 00 00 00 00 00 80  01 00 00 00 06 00 00 00   ........ ........
+00000050: 00 00 00 80 01 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000060: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+10.8 encrypted
+00000000: 40 00 00 00 ff ff ff ff  ff ff ff ff 01 00 00 00   @....... ........
+00000010: b5 02 00 00 00 00 00 80  01 00 00 00 02 00 00 00   ........ ........
+00000020: 00 00 00 80 01 00 00 00  45 01 00 00 00 00 00 80   ........ E.......
+00000030: 01 00 00 00 46 01 00 00  00 00 00 80 01 00 00 00   ....F... ........
+00000040: 05 00 00 00 00 00 00 80  01 00 00 00 9e 00 00 00   ........ ........
+00000050: 00 00 00 80 01 00 00 00  07 00 00 00 00 00 00 80   ........ ........
+00000060: 01 00 00 00 08 00 00 00  00 00 00 80 01 00 00 00   ........ ........
+00000070: b8 02 00 00 00 00 00 80  01 00 00 00 66 02 00 00   ........ ....f...
+00000080: 00 00 00 80 01 00 00 00  67 02 00 00 00 00 00 80   ........ g.......
+00000090: 01 00 00 00 68 02 00 00  00 00 00 80 01 00 00 00   ....h... ........
+000000a0: 69 02 00 00 00 00 00 80  01 00 00 00 6a 02 00 00   i....... ....j...
+000000b0: 00 00 00 80 01 00 00 00  6b 02 00 00 00 00 00 80   ........ k.......
+000000c0: 01 00 00 00 6c 02 00 00  00 00 00 80 01 00 00 00   ....l... ........
+000000d0: 6d 02 00 00 00 00 00 80  01 00 00 00 6e 02 00 00   m....... ....n...
+000000e0: 00 00 00 80 01 00 00 00  6f 02 00 00 00 00 00 80   ........ o.......
+000000f0: 01 00 00 00 70 02 00 00  00 00 00 80 01 00 00 00   ....p... ........
+00000100: 71 02 00 00 00 00 00 80  01 00 00 00 72 02 00 00   q....... ....r...
+00000110: 00 00 00 80 01 00 00 00  73 02 00 00 00 00 00 80   ........ s.......
+00000120: 01 00 00 00 74 02 00 00  00 00 00 80 01 00 00 00   ....t... ........
+00000130: 75 02 00 00 00 00 00 80  01 00 00 00 76 02 00 00   u....... ....v...
+00000140: 00 00 00 80 01 00 00 00  77 02 00 00 00 00 00 80   ........ w.......
+00000150: 01 00 00 00 78 02 00 00  00 00 00 80 01 00 00 00   ....x... ........
+00000160: 79 02 00 00 00 00 00 80  01 00 00 00 7a 02 00 00   y....... ....z...
+00000170: 00 00 00 80 01 00 00 00  7b 02 00 00 00 00 00 80   ........ {.......
+00000180: 01 00 00 00 7c 02 00 00  00 00 00 80 01 00 00 00   ....|... ........
+00000190: 7d 02 00 00 00 00 00 80  01 00 00 00 7e 02 00 00   }....... ....~...
+000001a0: 00 00 00 80 01 00 00 00  7f 02 00 00 00 00 00 80   ........ ........
+000001b0: 01 00 00 00 81 02 00 00  00 00 00 80 01 00 00 00   ........ ........
+000001c0: 82 02 00 00 00 00 00 80  01 00 00 00 83 02 00 00   ........ ........
+000001d0: 00 00 00 80 01 00 00 00  84 02 00 00 00 00 00 80   ........ ........
+000001e0: 01 00 00 00 85 02 00 00  00 00 00 80 01 00 00 00   ........ ........
+000001f0: 86 02 00 00 00 00 00 80  01 00 00 00 87 02 00 00   ........ ........
+00000200: 00 00 00 80 01 00 00 00  88 02 00 00 00 00 00 80   ........ ........
+00000210: 01 00 00 00 89 02 00 00  00 00 00 80 01 00 00 00   ........ ........
+00000220: 8a 02 00 00 00 00 00 80  01 00 00 00 8b 02 00 00   ........ ........
+00000230: 00 00 00 80 01 00 00 00  8c 02 00 00 00 00 00 80   ........ ........
+00000240: 01 00 00 00 8d 02 00 00  00 00 00 80 01 00 00 00   ........ ........
+00000250: 8e 02 00 00 00 00 00 80  01 00 00 00 8f 02 00 00   ........ ........
+00000260: 00 00 00 80 01 00 00 00  90 02 00 00 00 00 00 80   ........ ........
+00000270: 01 00 00 00 91 02 00 00  00 00 00 80 01 00 00 00   ........ ........
+00000280: 92 02 00 00 00 00 00 80  01 00 00 00 93 02 00 00   ........ ........
+00000290: 00 00 00 80 01 00 00 00  94 02 00 00 00 00 00 80   ........ ........
+000002a0: 01 00 00 00 95 02 00 00  00 00 00 80 01 00 00 00   ........ ........
+000002b0: 96 02 00 00 00 00 00 80  01 00 00 00 97 02 00 00   ........ ........
+000002c0: 00 00 00 80 01 00 00 00  3b 00 00 00 00 00 00 80   ........ ;.......
+000002d0: 01 00 00 00 3c 00 00 00  00 00 00 80 01 00 00 00   ....<... ........
+000002e0: 3d 00 00 00 00 00 00 80  01 00 00 00 47 01 00 00   =....... ....G...
+000002f0: 00 00 00 80 01 00 00 00  ff ff ff ff ff ff ff 7f   ........ ........
+00000300: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+....
+
+=== Metadata block data type 0x0017
+Metadata block data type 0x0017 contains information about [yellow-background]*TODO: describe*
+
+The metadata block data is variable in size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 4 | | [yellow-background]*Number of entries*
+| 4 | ... | | [yellow-background]*Array of entries* +
+[yellow-background]*Where an entry is 12 bytes?*
+|===
+
+The metadata block data type 0x0017 array entry is 32 bytes in size and
+consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| 0 | 8 | | [yellow-background]*Unknown (metadata block group)*
+| 8 | 4 | | [yellow-background]*Unknown*
+| 12 | 4 | | [yellow-background]*Unknown (number of blocks in group)*
+| 16 | 8 | | [yellow-background]*Unknown*
+| 24 | 8 | | [yellow-background]*Unknown*
+|===
+
+....
+Non-system only ?
+00000000: 14 00 00 00 00 00 00 00  02 00 00 00 00 00 00 00   ........ ........
+00000010: 00 00 00 00 06 00 00 00  13 00 00 00 00 00 00 00   ........ ........
+
+00000020: 01 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000030: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+00000040: 02 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000050: 00 00 00 00 00 00 00 00  01 00 00 00 00 00 00 00   ........ ........
+
+00000060: 03 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000070: 00 00 00 00 00 00 00 00  02 00 00 00 00 00 00 00   ........ ........
+
+00000080: 04 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000090: 00 00 00 00 00 00 00 00  03 00 00 00 00 00 00 00   ........ ........
+000000a0: 05 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+000000b0: 00 00 00 00 00 00 00 00  04 00 00 00 00 00 00 00   ........ ........
+000000c0: 06 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+000000d0: 00 00 00 00 00 00 00 00  05 00 00 00 00 00 00 00   ........ ........
+000000e0: 07 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+000000f0: 00 00 00 00 00 00 00 00  06 00 00 00 00 00 00 00   ........ ........
+00000100: 08 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000110: 00 00 00 00 00 00 00 00  07 00 00 00 00 00 00 00   ........ ........
+00000120: 09 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000130: 00 00 00 00 00 00 00 00  08 00 00 00 00 00 00 00   ........ ........
+00000140: 0a 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000150: 00 00 00 00 00 00 00 00  09 00 00 00 00 00 00 00   ........ ........
+00000160: 0b 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000170: 00 00 00 00 00 00 00 00  0a 00 00 00 00 00 00 00   ........ ........
+00000180: 0c 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000190: 00 00 00 00 00 00 00 00  0b 00 00 00 00 00 00 00   ........ ........
+000001a0: 0d 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+000001b0: 00 00 00 00 00 00 00 00  0c 00 00 00 00 00 00 00   ........ ........
+000001c0: 0e 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+000001d0: 00 00 00 00 00 00 00 00  0d 00 00 00 00 00 00 00   ........ ........
+000001e0: 0f 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+000001f0: 00 00 00 00 00 00 00 00  0e 00 00 00 00 00 00 00   ........ ........
+00000200: 10 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000210: 00 00 00 00 00 00 00 00  0f 00 00 00 00 00 00 00   ........ ........
+00000220: 11 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000230: 00 00 00 00 00 00 00 00  10 00 00 00 00 00 00 00   ........ ........
+00000240: 12 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000250: 00 00 00 00 00 00 00 00  11 00 00 00 00 00 00 00   ........ ........
+
+00000260: 13 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000270: 00 00 00 00 00 00 00 00  12 00 00 00 00 00 00 00   ........ ........
+
+00000280: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+10.8 encrypted
+00000000: 20 00 00 00 00 00 00 00  02 00 00 00 00 00 00 00    ....... ........
+00000010: 00 00 00 00 07 00 00 00  1f 00 00 00 00 00 00 00   ........ ........
+
+00000020: 02 00 00 00 00 00 00 00  ae 0a 00 00 00 00 00 00   ........ ........
+00000030: 0d 00 00 00 00 00 00 00  0a 00 00 00 00 00 00 00   ........ ........
+00000040: 03 00 00 00 00 00 00 00  06 00 00 00 00 00 00 00   ........ ........
+00000050: 07 00 00 00 01 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000060: 09 00 00 00 00 00 00 00  bc 0a 00 00 00 00 00 00   ........ ........
+00000070: 0d 00 00 00 00 00 00 00  01 00 00 00 00 00 00 00   ........ ........
+00000080: 04 00 00 00 00 00 00 00  ca 0a 00 00 00 00 00 00   ........ ........
+00000090: 0d 00 00 00 00 00 00 00  03 00 00 00 00 00 00 00   ........ ........
+000000a0: 05 00 00 00 00 00 00 00  d8 0a 00 00 00 00 00 00   ........ ........
+000000b0: 01 00 00 00 03 00 00 00  04 00 00 00 00 00 00 00   ........ ........
+000000c0: 06 00 00 00 00 00 00 00  5e 09 00 00 00 00 00 00   ........ ^.......
+000000d0: 0d 00 00 00 00 00 00 00  05 00 00 00 00 00 00 00   ........ ........
+000000e0: 07 00 00 00 00 00 00 00  6c 09 00 00 00 00 00 00   ........ l.......
+000000f0: 0d 00 00 00 00 00 00 00  06 00 00 00 00 00 00 00   ........ ........
+00000100: 08 00 00 00 00 00 00 00  7a 09 00 00 00 00 00 00   ........ z.......
+00000110: 0d 00 00 00 00 00 00 00  07 00 00 00 00 00 00 00   ........ ........
+00000120: 0b 00 00 00 00 00 00 00  48 00 00 00 00 00 00 00   ........ H.......
+00000130: 08 00 00 00 1a 00 00 00  02 00 00 00 00 00 00 00   ........ ........
+00000140: 0a 00 00 00 00 00 00 00  50 00 00 00 00 00 00 00   ........ P.......
+00000150: 07 00 00 00 19 00 00 00  09 00 00 00 00 00 00 00   ........ ........
+00000160: 01 00 00 00 00 00 00 00  88 09 00 00 00 00 00 00   ........ ........
+00000170: 0d 00 00 00 00 00 00 00  08 00 00 00 00 00 00 00   ........ ........
+00000180: 0c 00 00 00 00 00 00 00  96 09 00 00 00 00 00 00   ........ ........
+00000190: 0d 00 00 00 00 00 00 00  0b 00 00 00 00 00 00 00   ........ ........
+000001a0: 0d 00 00 00 00 00 00 00  a4 09 00 00 00 00 00 00   ........ ........
+000001b0: 0d 00 00 00 00 00 00 00  0c 00 00 00 00 00 00 00   ........ ........
+000001c0: 0e 00 00 00 00 00 00 00  b2 09 00 00 00 00 00 00   ........ ........
+000001d0: 0d 00 00 00 00 00 00 00  0d 00 00 00 00 00 00 00   ........ ........
+000001e0: 0f 00 00 00 00 00 00 00  c0 09 00 00 00 00 00 00   ........ ........
+000001f0: 0d 00 00 00 00 00 00 00  0e 00 00 00 00 00 00 00   ........ ........
+00000200: 10 00 00 00 00 00 00 00  ce 09 00 00 00 00 00 00   ........ ........
+00000210: 0d 00 00 00 00 00 00 00  0f 00 00 00 00 00 00 00   ........ ........
+00000220: 11 00 00 00 00 00 00 00  dc 09 00 00 00 00 00 00   ........ ........
+00000230: 0d 00 00 00 00 00 00 00  10 00 00 00 00 00 00 00   ........ ........
+00000240: 12 00 00 00 00 00 00 00  ea 09 00 00 00 00 00 00   ........ ........
+00000250: 0d 00 00 00 00 00 00 00  11 00 00 00 00 00 00 00   ........ ........
+00000260: 13 00 00 00 00 00 00 00  f8 09 00 00 00 00 00 00   ........ ........
+00000270: 0d 00 00 00 00 00 00 00  12 00 00 00 00 00 00 00   ........ ........
+00000280: 14 00 00 00 00 00 00 00  06 0a 00 00 00 00 00 00   ........ ........
+00000290: 0d 00 00 00 00 00 00 00  13 00 00 00 00 00 00 00   ........ ........
+000002a0: 15 00 00 00 00 00 00 00  14 0a 00 00 00 00 00 00   ........ ........
+000002b0: 0d 00 00 00 00 00 00 00  14 00 00 00 00 00 00 00   ........ ........
+000002c0: 16 00 00 00 00 00 00 00  22 0a 00 00 00 00 00 00   ........ ".......
+000002d0: 0d 00 00 00 00 00 00 00  15 00 00 00 00 00 00 00   ........ ........
+000002e0: 17 00 00 00 00 00 00 00  30 0a 00 00 00 00 00 00   ........ 0.......
+000002f0: 0d 00 00 00 00 00 00 00  16 00 00 00 00 00 00 00   ........ ........
+00000300: 18 00 00 00 00 00 00 00  3e 0a 00 00 00 00 00 00   ........ >.......
+00000310: 0d 00 00 00 00 00 00 00  17 00 00 00 00 00 00 00   ........ ........
+00000320: 19 00 00 00 00 00 00 00  4c 0a 00 00 00 00 00 00   ........ L.......
+00000330: 0d 00 00 00 00 00 00 00  18 00 00 00 00 00 00 00   ........ ........
+00000340: 1a 00 00 00 00 00 00 00  5a 0a 00 00 00 00 00 00   ........ Z.......
+00000350: 0d 00 00 00 00 00 00 00  19 00 00 00 00 00 00 00   ........ ........
+00000360: 1b 00 00 00 00 00 00 00  68 0a 00 00 00 00 00 00   ........ h.......
+00000370: 0d 00 00 00 00 00 00 00  1a 00 00 00 00 00 00 00   ........ ........
+00000380: 1c 00 00 00 00 00 00 00  76 0a 00 00 00 00 00 00   ........ v.......
+00000390: 0d 00 00 00 00 00 00 00  1b 00 00 00 00 00 00 00   ........ ........
+000003a0: 1d 00 00 00 00 00 00 00  84 0a 00 00 00 00 00 00   ........ ........
+000003b0: 0d 00 00 00 00 00 00 00  1c 00 00 00 00 00 00 00   ........ ........
+000003c0: 1e 00 00 00 00 00 00 00  92 0a 00 00 00 00 00 00   ........ ........
+000003d0: 0d 00 00 00 00 00 00 00  1d 00 00 00 00 00 00 00   ........ ........
+000003e0: 1f 00 00 00 00 00 00 00  a0 0a 00 00 00 00 00 00   ........ ........
+000003f0: 0d 00 00 00 00 00 00 00  1e 00 00 00 00 00 00 00   ........ ........
+00000400: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+....
+
+=== Metadata block data type 0x0018
+Metadata block data type 0x0018 contains information about [yellow-background]*TODO: describe*
+
+The metadata block data is variable in size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 8 | 0x00000002 | [yellow-background]*Unknown*
+| 8 | 8 | | [yellow-background]*Unknown*
+|===
+
+....
+00002040: 02 00 00 00 00 00 00 00  28 00 00 00 00 00 00 00   ........ (.......
+00002050: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00003ff0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+00002040: 02 00 00 00 00 00 00 00  03 00 00 00 00 00 00 00   ........ ........
+00002050: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00003ff0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+00000000: 02 00 00 00 00 00 00 00  03 00 00 00 00 00 00 00   ........ ........
+00000010: 00 00 00 00 00 00 00 00  09 00 00 00 00 00 00 00   ........ ........
+00000020: 09 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000030: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+10.8 encrypted
+00000000: 02 00 00 00 00 00 00 00  3b 00 00 00 00 00 00 00   ........ ;.......
+00000010: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000020: 00 00 00 00 00 00 00 00  ff ff ff ff ff ff ff 7f   ........ ........
+00000030: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+00000000: 02 00 00 00 00 00 00 00  03 00 00 00 00 00 00 00   ........ ........
+00000010: 00 00 00 00 00 00 00 00  0f 00 00 00 00 00 00 00   ........ ........
+00000020: 00 00 00 00 00 00 00 00  ff ff ff ff ff ff ff 7f   ........ ........
+00000030: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+00000000: 02 00 00 00 00 00 00 00  7d 00 00 00 00 00 00 00   ........ }.......
+00000010: 00 00 00 00 00 00 00 00  09 00 00 00 00 00 00 00   ........ ........
+00000020: 00 00 00 00 00 00 00 00  ff ff ff ff ff ff ff 7f   ........ ........
+00000030: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+....
+
+=== [[metadata_block_0x0019]]Metadata block data type 0x0019
+Metadata block data type 0x0019 contains information about the encryption
+context of the logical volume. This block type is used in combination with
+non-system volumes, both encrypted and non-encrypted. On system volumes this
+metadata block is marked as "LVFwiped" and is empty.
+
+The metadata block data is variable bytes in size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 8 | | [yellow-background]*Unknown*
+| 8 | 8 | | [yellow-background]*Unknown*
+| 16 | 8 | | [yellow-background]*Unknown*
+| 24 | 8 | | [yellow-background]*Unknown*
+| 32 | 4 | | Next block number +
+Contains 0 if there is no next block
+| 36 | 4 | | [yellow-background]*Unknown (empty values)*
+| 40 | 4 | | total compressed XML plist data size +
+The total compressed size of the XML plist data +
+[yellow-background]*aligned to dword?*
+| 44 | 4 | | total uncompressed XML plist data size +
+The total uncompressed size of the XML plist data
+| 48 | 4 | | stored XML plist data offset +
+The offset is relative to the start of the metadata block header
+| 52 | 4 | | stored XML plist data size +
+The size of the plist data stored within the metadata block
+| 56 | 4 | | [yellow-background]*Unknown (empty values)*
+| 60 | 4 | | [yellow-background]*Unknown*
+| 64 | ... | | [yellow-background]*Unknown (empty values)*
+| ... | ... | | XML plist data
+|===
+
+[NOTE]
+The XML plist data can be stored accross multiple metadata blocks. The first
+metadata block will be of type 0x0019 and followed by metadata blocks of type
+0x0024. The total uncompressed XML plist data size indicates the size of the
+data. Also see: <<metadata_block_0x0024,Metadata block data type 0x0024>>.
+
+[NOTE]
+The XML plist data can be DEFLATE compressed. The total compressed XML plist
+data size will contain the compressed data size, otherwise it contains the same
+as the uncompressed XML plist data size.
+
+....
+00000000: 01 00 00 00 00 00 00 00  01 00 00 00 00 00 00 00   ........ ........
+00000010: 0c 00 00 00 00 00 00 00  0b 00 00 00 00 00 00 00   ........ ........
+00000020: 00 00 00 00 00 00 00 00  18 05 00 00 18 05 00 00   ........ ........
+00000030: b0 03 00 00 18 05 00 00  00 00 00 00 20 00 00 00   ........ .... ...
+
+XML offset and size
+
+00000040: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00000360: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000370: 3c 64 69 63 74 20 49 44  3d 22 30 22 3e 3c 6b 65   <dict ID ="0"><ke
+...
+00000880: 3c 2f 64 69 63 74 3e 00  00 00 00 00 00 00 00 00   </dict>. ........
+00000890: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+00000000: 01 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000010: 0c 00 00 00 00 00 00 00  0b 00 00 00 00 00 00 00   ........ ........
+00000020: 00 00 00 00 00 00 00 00  c0 02 00 00 c0 02 00 00   ........ ........
+00000030: b0 03 00 00 c0 02 00 00  00 00 01 00 20 00 01 00   ........ .... ...
+00000040: 01 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000050: 09 00 00 00 00 00 00 00  21 00 00 00 00 00 00 00   ........ !.......
+00000060: 09 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000070: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+....
+
+....
+Compressed and segmented XML plist data (first block 0x0019)
+
+00000040  01 00 00 00 00 00 00 00  01 00 00 00 00 00 00 00  |................|
+00000050  08 00 00 00 00 00 00 00  07 00 00 00 00 00 00 00  |................|
+00000060  0a 00 00 00 00 00 00 00                           |........c.$..(0.|
+
+00000060                           63 15 24 00 bd 28 30 00  |........c.$..(0.|
+00000070  b0 03 00 00 50 1c 00 00  01 00 00 00 20 00 01 00  |....P....... ...|
+00000080  01 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+00000090  09 00 00 00 00 00 00 00  77 03 00 00 00 00 00 00  |........w.......|
+000000a0  e4 0e 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+000000b0  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+
+DEFLATE compressed
+000003b0  78 9c d4 ba d9 b2 ab 58  92 2d fa 2b 65 f1 8a 45  |x......X.-.+e..E|
+....
+
+....
+Compressed and segmented XML plist data (successive block 0x0024)
+
+00000040  00 00 00 00 00 00 00 00  0a 0c 00 00 00 00 00 00  |................|
+00000050  5a c8 6e 91 e0 5c 00 a0  3f bc f6 25 2a 34 fc c8  |Z.n..\..?..%*4..|
+....
+
+[NOTE]
+The XML plist data does not have to be valid.
+
+==== XML plist data
+XML plist main dict containing:
+
+[cols="1,1",options="header"]
+|===
+| Key | Description
+| com.apple.corestorage.lvf.revertState | Revert state +
+This key is optional
+| com.apple.corestorage.lvf.encryption.context | Encryption context dict +
+This key is optional
+| DefaultEncryptionContext | Reference to an identifier (ID) in the encryption context
+| com.apple.corestorage.lvf.groupUUID | The logical volume group identifier +
+Contains an UUID
+| com.apple.corestorage.lvf.sequence |
+| com.apple.corestorage.lvf.uuid | The logical volume identifier +
+Contains an UUID
+| PreviousEncryptionContext | Reference to an identifier (ID) in the encryption context
+| com.apple.corestorage.lvf.advertisedBlkSizes | Values seen: 1
+| com.apple.corestorage.lvf.encryption.type | This key is optional +
+Values seen: | "None"
+| com.apple.corestorage.lvf.encryption.status | This key is optional |
+Values seen: "Unlocked"
+|===
+
+===== Encryption context
+Dict containing:
+
+[cols="1,1",options="header"]
+|===
+| Key | Description
+| CryptoUsers | Array of crypto user dicts +
+This array is empty when the logical volume is not pass-phrase/password protected
+| LastUpdateTime | [yellow-background]*TODO*
+| WrappedVolumeKeys | Array of wrapped volume key dicts
+| ConversionInfo | Conversion information dict
+|===
+
+===== Crypto user
+Dict containing:
+
+[cols="1,1",options="header"]
+|===
+| Key | Description
+| PassphraseWrappedKEKStruct | Base 64 encoded binary data that contains the password wrapped key encrypted key +
+See section: [yellow-background]*TODO*
+| WrapVersion |
+| UserType |
+| UserIdent |
+| UserNamesData |
+| UserNamesData |
+| PassphraseHint |
+| KeyEncryptingKeyIdent |
+| UserFullName |
+| UserIcon |
+| EFILoginGraphics |
+|===
+
+===== Wrapped volume key
+Dict containing information about the volume key:
+
+[cols="1,1",options="header"]
+|===
+| Key | Description
+| VolumeKeyIndex | Index of the volume key within the array
+| VolumeKeyIdent | Volume key identifier
+| Contains an UUID | WrapVersion +
+Reference to an identifier (ID) in the encryption context
+| KeyEncryptingKeyIdent | The identifier of the key encrypting key
+| BlockAlgorithm | Encryption method of the logical volume data: +
+Seen: "None", "AES-XTS"
+| KEKWrappedVolumeKeyStruct | Base 64 encoded binary data that contains the key encrypted key wrapped volume key }
+See section: <<key_encrypted_key_wrapped_volume_key,Key encrypted key wrapped volume key>>
+|===
+
+===== Conversion information
+Dict containing information about the conversion status:
+
+[cols="1,1",options="header"]
+|===
+| Key | Description
+| TargetContext | [yellow-background]*Reference to an identifier (ID) in the encryption context*
+| ConversionStatus | Coversion status +
+Seen: NoConversion
+|===
+
+....
+Unencrypted
+<dict ID="0">
+  <key>com.apple.corestorage.lvf.encryption.context</key>
+  <dict ID="1">
+    <key>CryptoUsers</key>
+    <array ID="2"></array> (empty)
+    <key>LastUpdateTime</key>
+    <integer size="64" ID="3">0x500ba053</integer>
+    <key>WrappedVolumeKeys</key>
+
+    <array ID="4">
+      <dict ID="5">
+        <key>VolumeKeyIndex</key>
+        <integer size="32" ID="6">0x0</integer>
+        <key>VolumeKeyIdent</key>
+        <string ID="7">AD2FA664-BC4D-491A-936C-F745295B3AC5</string>
+        <key>WrapVersion</key>
+        <reference IDREF="6"/>
+        <key>KeyEncryptingKeyIdent</key>
+        <string ID="8">none</string>
+        <key>BlockAlgorithm</key>
+        <string ID="9">None</string>
+        <key>KEKWrappedVolumeKeyStruct</key>
+        <data ID="10"></data>
+      </dict>
+    </array>
+
+    <key>ConversionInfo</key>
+    <dict ID="11">
+      <key>TargetContext</key>
+      <reference IDREF="6"/>
+      <key>ConversionStatus</key>
+      <string ID="12">NoConversion</string>
+    </dict>
+  </dict>
+
+  <key>DefaultEncryptionContext</key>
+  <reference IDREF="6"/>
+  <key>com.apple.corestorage.lvf.groupUUID</key>
+  <string ID="13">ACC53457-40D1-417C-958A-DC6A04CFCBBB</string>
+  <key>com.apple.corestorage.lvf.sequence</key>
+  <integer size="32" ID="14">0x2</integer>
+  <key>com.apple.corestorage.lvf.uuid</key>
+  <string ID="15">456AF40B-AF12-4BA6-AF74-9E3D253C9DBD</string>
+  <key>PreviousEncryptionContext</key>
+  <reference IDREF="6"/>
+  <key>com.apple.corestorage.lvf.advertisedBlkSizes</key>
+  <integer size="32" ID="16">0x1</integer>
+</dict>
+
+
+
+Encrypted
+<dict ID="0">
+  <key>com.apple.corestorage.lvf.encryption.context</key>
+  <dict ID="1">
+    <key>CryptoUsers</key>
+    <array ID="2">
+      <dict ID="3">
+        <key>PassphraseWrappedKEKStruct</key>
+        <data ID="4">AwAAABAAAAAhJ7cnW0kP7akL3+XPVv/dEAAAABgAAAB92Y6avvO2JVmeOlMPWt0yaiUX13HXSN0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAMAAAAKAAAA5WzYfJ6wBsZwAzRpF68AAAEAAAABAAAAAwAAAAoAAAB0TZG7mq/T2CYOGjrQvWzHVQDX8bjI4OqM6RjgHLHbsYsTc9qn3fhZ/N5oSdzyTH3KddNAL8VI9viqTQ/rZ84k5feUJCHCiSx3Gw2joJeESu90iynb2oU8o36VS20BRNE=</data>
+        <key>WrapVersion</key>
+        <integer size="32" ID="5">0x1</integer>
+        <key>UserType</key>
+        <integer size="32" ID="6">0x10000001</integer>
+        <key>UserIdent</key>
+        <string ID="7">A27BFBF4-5E71-499E-A50E-0F3C9A93A65E</string>
+        <key>UserNamesData</key>
+        <string ID="8"></string>
+        <key>PassphraseHint</key>
+        <reference IDREF="8"/>
+        <key>KeyEncryptingKeyIdent</key>
+        <string ID="9">C8787204-AE27-4823-A24F-FB8C46CDB21A</string>
+        <key>UserFullName</key>
+        <reference IDREF="8"/>
+        <key>UserIcon</key>
+        <data ID="10"></data>
+        <key>EFILoginGraphics</key>
+        <data ID="11"></data>
+      </dict>
+    </array>
+    <key>LastUpdateTime</key>
+    <integer size="64" ID="12">0x500ba362</integer>
+    <key>WrappedVolumeKeys</key>
+    <array ID="13">
+      <dict ID="14">
+        <key>VolumeKeyIndex</key>
+        <integer size="32" ID="15">0x0</integer>
+        <key>VolumeKeyIdent</key>
+        <string ID="16">064F0E0F-93D8-4B9B-86BD-3B88E975B986</string>
+        <key>WrapVersion</key>
+        <reference IDREF="15"/>
+        <key>KeyEncryptingKeyIdent</key>
+        <string ID="17">none</string>
+        <key>BlockAlgorithm</key>
+        <string ID="18">None</string>
+        <key>KEKWrappedVolumeKeyStruct</key>
+        <data ID="19"></data>
+      </dict>
+
+      <dict ID="20">
+        <key>VolumeKeyIndex</key>
+        <reference IDREF="5"/>
+        <key>VolumeKeyIdent</key>
+        <string ID="21">32686E63-1B7B-4789-A0AE-DBCDEFF59A9F</string>
+        <key>WrapVersion</key>
+        <reference IDREF="5"/>
+        <key>KeyEncryptingKeyIdent</key>
+        <reference IDREF="9"/>
+        <key>BlockAlgorithm</key>
+        <string ID="22">AES-XTS</string>
+        <key>KEKWrappedVolumeKeyStruct</key>
+        <data ID="23">AgAAABgAAACH2P5JK0cnneEO1tyc/QE548bziUUWHjAIAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAMAAAAKAAAA5WzYfJ6wBsZwAzRpVBN8bKAN1e/A5eZ1NzNRgU3IIklZRGgeb/MZlvBJdhWzwqPsfsd9DY95B7bvRxR2s1/16uoDnFUaLQ8JJZaM1mgPR63ih7kOGgOS+GlQlkQz/2SWAQAAAA==</data>
+      </dict>
+    </array>
+    <key>ConversionInfo</key>
+    <dict ID="24">
+      <key>TargetContext</key>
+      <reference IDREF="5"/>
+      <key>ConversionStatus</key>
+      <string ID="25">NoConversion</string>
+    </dict>
+  </dict>
+  <key>DefaultEncryptionContext</key>
+  <integer size="32" ID="26">0x1</integer>
+  <key>com.apple.corestorage.lvf.groupUUID</key>
+  <string ID="27">ACC53457-40D1-417C-958A-DC6A04CFCBBB</string>
+  <key>com.apple.corestorage.lvf.sequence</key>
+  <integer size="32" ID="28">0x2</integer>
+  <key>com.apple.corestorage.lvf.uuid</key>
+  <string ID="29">697CA9C9-2DB2-4313-9FD5-C06BC12317AE</string>
+  <key>PreviousEncryptionContext</key>
+  <reference IDREF="15"/>
+  <key>com.apple.corestorage.lvf.advertisedBlkSizes</key>
+  <integer size="32" ID="30">0x1</integer>
+</dict>
+
+System volume:
+LVFwiped
+....
+
+=== Metadata block data type 0x001a
+Metadata block data type 0x001a contains information about the logical volume.
+The block data also contains the lv.familyUUID which is needed to compute the
+tweak key to decrypt encrypted volumes.
+
+The metadata block data is variable in size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 8 | | [yellow-background]*Unknown*
+| 8 | 8 | | [yellow-background]*Unknown*
+| 16 | 16 | | [yellow-background]*Unknown (empty values)*
+| 32 | 8 | | [yellow-background]*Unknown*
+| 40 | 8 | | [yellow-background]*Unknown*
+| 48 | 8 | | [yellow-background]*Unknown (empty values)*
+| 52 | 4 | | [yellow-background]*Unknown (copy of XML plist data size?)*
+| 56 | 4 | | [yellow-background]*Unknown (copy of XML plist data size?)*
+| 64 | 4 | | XML plist data offset +
+The offset is relative to the start of the metadata block header
+| 68 | 4 | | XML plist data size
+| 72 | ... | [yellow-background]*Unknown*
+| ... | ... | | XML plist data
+|===
+
+....
+0000c040: 09 00 00 00 00 00 00 00  03 00 00 00 00 00 00 00   ........ ........
+0000c050: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+0000c060: 05 00 00 00 00 00 00 00  04 00 00 00 00 00 00 00   ........ ........
+0000c070: 00 00 00 00 00 00 00 00  a9 02 00 00 a9 02 00 00   ........ ........
+
+0000c080: b8 00 00 00 a9 02 00 00  00 00 00 00 00 00 00 00   ........ ........
+0000c090: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+0000c0a0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+xml offset
+xml size
+0000c0b0: 00 00 00 00 00 00 00 00  3c 64 69 63 74 3e 3c 6b   ........ <dict><k
+
+0000c350: 3c 2f 73 74 72 69 6e 67  3e 3c 2f 64 69 63 74 3e   </string ></dict>
+0000c360: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+0000dff0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+10.8 encrypted
+00000000: 09 00 00 00 00 00 00 00  03 00 00 00 00 00 00 00   ........ ........
+00000010: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000020: 05 00 00 00 00 00 00 00  04 00 00 00 00 00 00 00   ........ ........
+00000030: 00 00 00 00 00 00 00 00  a9 02 00 00 a9 02 00 00   ........ ........
+00000040: b8 00 00 00 a9 02 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000050: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000060: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000070: 00 00 00 00 00 00 00 00  3c 64 69 63 74 3e 3c 6b   ........ <dict><k
+....
+
+==== XML plist data
+The XML plist data consists of a single dict containing the following keys.
+
+[cols="1,1",options="header"]
+|===
+| Key | Description
+| com.apple.corestorage.lv.familyUUID | The volume family identifier +
+Contains an UUID
+| com.apple.corestorage.lv.groupUUID | The volume group identifier +
+Contains an UUID
+| com.apple.corestorage.lv.sequence | The sequence number
+| com.apple.corestorage.lv.version | Version stored as 32-bit where the upper 16-bit is the major number and the lower 16-bit the minor number
+| com.apple.corestorage.lv.contenthint | Indicator of the contents of the volume, e.g. Apple_HFS
+| com.apple.corestorage.lv.name | Name of the volume
+| com.apple.corestorage.lv.size | Size of the volume in bytes
+| com.apple.corestorage.lv.uuid | The logical volume identifier +
+Contains an UUID
+|===
+
+[NOTE]
+There is no specific ordering to the keys.
+
+[NOTE]
+When a 0x0405 metadata block is present the value of
+com.apple.corestorage.lv.size seems to be unreliable.
+
+=== Metadata block data type 0x001c
+Metadata block data type 0x001c contains information about [yellow-background]*TODO: describe*
+
+The metadata block data is variable in size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 8 | | [yellow-background]*Unknown (empty values)*
+| 8 | 8 | | [yellow-background]*Number of entries*
+|===
+
+[yellow-background]*The array entry is 32 bytes of size?*
+
+....
+Unencrypted LVG only
+00000000: 00 00 00 00 00 00 00 00  01 00 00 00 00 00 00 00   ........ ........
+00000010: 00 00 00 00 01 00 00 00                            ........ ........
+
+If number of blocks slightly larger than physical volume number of blocks
+00000010:                          80 fd 00 00 00 00 00 00   ........ ........
+
+00000020: 04 00 00 00 00 00 00 00  06 00 00 00 00 00 00 00   ........ ........
+00000030: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+Encrypted
+00000000: 00 00 00 00 00 00 00 00  01 00 00 00 00 00 00 00   ........ ........
+00000010: 00 00 00 00 83 05 00 00  00 ec 07 00 00 00 00 00   ........ ........
+00000020: 0a 00 00 00 00 00 00 00  0c 00 00 00 00 00 00 00   ........ ........
+00000030: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+00000000: 00 00 00 00 00 00 00 00  01 00 00 00 00 00 00 00   ........ ........
+00000010: 00 00 00 00 81 00 00 00  98 81 03 00 00 00 00 00   ........ ........
+00000020: 7e 00 00 00 00 00 00 00  80 00 00 00 00 00 00 00   ~....... ........
+00000030: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+00000000: 00 00 00 00 00 00 00 00  01 00 00 00 00 00 00 00   ........ ........
+00000010: 00 00 00 00 eb 00 00 00  00 ec 07 00 00 00 00 00   ........ ........
+00000020: 86 00 00 00 00 00 00 00  88 00 00 00 00 00 00 00   ........ ........
+00000030: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+....
+
+=== Metadata block data type 0x001d
+Metadata block data type 0x001d contains information about location of the
+logical volume group inside the physical volume.
+
+The metadata block data is variable of size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 16 | | [yellow-background]*Unknown (empty values)*
+| 16 | 8 | | [yellow-background]*Number of entries*
+| 24 | ... | [yellow-background]*Array of entries*
+|===
+
+The array entry is 16 bytes of size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 4 | | [yellow-background]*Unknown (number of blocks?)* +
+[yellow-background]*If pointed to from a block 0x0022: LVG free space in blocks?*
+| 4 | 4 | | [yellow-background]*Unknown (flags?)*
+| 8 | 4 | | [yellow-background]*Unknown (block number?)*
+| 12 | 4 | | [yellow-background]*Unknown (Empty values)*
+|===
+
+....
+Unencrypted only?
+Number of values
+
+00000000: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000010: 01 00 00 00 00 00 00 00  f4 d5 00 00 00 00 00 00   ........ ........
+00000020: 01 1c 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000030: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+00000000: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000010: 02 00 00 00 00 00 00 00  f4 d5 00 00 00 00 00 00   ........ ........
+00000020: 01 1c 00 00 00 00 00 00  f4 d5 00 00 00 00 00 80   ........ ........
+00000030: 01 1c 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000040: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+Seen in combination with block 0x0505 where this contained values that did not match the logical volume.
+00000000: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000010: 01 00 00 00 00 00 00 00  00 10 00 00 00 00 00 00   ........ ........
+00000020: 11 8c c0 01 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000030: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+....
+
+=== Metadata block data type 0x0021
+Metadata block data type 0x0021 contains information about [yellow-background]*TODO: describe*
+
+The metadata block data is variable in size and consists of:
+
+[yellow-background]*Present when volume group contains a volume?*
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 2 | | [yellow-background]*Number of entries*
+| 2 | 4 | | [yellow-background]*Number of blocks*
+|===
+
+....
+0000a040: 01 00 c8 50 5e 00 00 00  00 00 00 00 00 00 00 00   ...P^... ........
+0000a050: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+0000bff0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+number of blocks
+
+00000000: 01 00 f4 d5 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000010: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+10.8 encrypted
+00000000: 01 00 67 e9 a3 04 00 00  00 00 00 00 00 00 00 00   ..g..... ........
+00000010: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+....
+
+=== Metadata block data type 0x0022
+Metadata block data type 0x0022 contains information about location of the
+logical volume group inside the physical volume. This block type is not used in
+combination with encrypted system volumes.
+
+The metadata block data is 48 bytes in size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 8 | | [yellow-background]*Unknown (Next 0x0022 block?)* +
+[yellow-background]*0 if not set?* +
+[yellow-background]*corresponds to unknown3 (value before block number) in the metadata block header*
+| 8 | 8 | | Number of entries
+| 16 | ... | | Array of entries
+|===
+
+The array entry is 32 bytes of size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 8 | | [yellow-background]*Unknown (number of blocks?)*
+| 8 | 8 | | [yellow-background]*Unknown (LVG status?)* +
+[yellow-background]*Is 0 if not set?*
+| 16 | 8 | | [yellow-background]*Unknown (block number?)* +
+[yellow-background]*Corresponds to the unknown3 in the metadata block data header of the next block which should be of type 0x001d* +
+[yellow-background]*Is 0 if not set?*
+| 24 | 8 | | [yellow-background]*Block number* +
+[yellow-background]*Corresponds to the block number in the metadata block data header of the next block which should be of type 0x001d* +
+[yellow-background]*Is 0 if not set?*
+|===
+
+[yellow-background]*In combination with 0x001d contains the block extents of
+the free space areas? Where 0x001d contains the block extents.*
+
+=== [[metadata_block_0x0024]]Metadata block data type 0x0024
+Metadata block data type 0x0024 is used to store data that does not fit within
+a single metadata block e.g. the XML plist data in metadata block 0x0019. Where
+the individual metadata blocks are a chain of data segments. Also see:
+<<metadata_block_0x0019,Metadata block data type 0x0019>>.
+
+The metadata block data is variable in size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 8 | | Next block number +
+Contains 0 if there is no next block
+| 8 | 8 | | Data size +
+Including the 16 bytes of the next block number and the data size
+| 16 | ... | Data
+|===
+
+=== Metadata block data type 0x0025
+Metadata block data type 0x0025 contains information about [yellow-background]*TODO: describe*
+
+The metadata block data is variable in size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 8 | | [yellow-background]*Unknown (Next 0x0025 block?)* +
+[yellow-background]*0 if not set?*
+| 8 | 8 | | Number of entries
+| 16 | ... | | Array of entries
+|===
+
+The array entry is 24 bytes of size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 8 | | [yellow-background]*Unknown*
+| 8 | 8 | | [yellow-background]*Unknown*
+| 16 | 8 | | [yellow-background]*Unknown (block group)*
+|===
+
+....
+00000000: 00 00 00 00 00 00 00 00  15 00 00 00 00 00 00 00   ........ ........
+
+00000010: 2f 00 00 00 00 00 00 00  ab 07 00 00 00 00 00 00   /....... ........
+00000020: 33 25 00 00 00 00 00 00                            3%...... ).......
+
+00000020:                          29 00 00 00 00 00 00 00   3%...... ).......
+00000030: a5 07 00 00 00 00 00 00  33 25 00 00 00 00 00 00   ........ 3%......
+00000040: 2b 00 00 00 00 00 00 00  a7 07 00 00 00 00 00 00   +....... ........
+00000050: 33 25 00 00 00 00 00 00  0b 00 00 00 00 00 00 00   3%...... ........
+00000060: 87 07 00 00 00 00 00 00  33 25 00 00 00 00 00 00   ........ 3%......
+00000070: 24 00 00 00 00 00 00 00  a0 07 00 00 00 00 00 00   $....... ........
+00000080: 33 25 00 00 00 00 00 00  0e 00 00 00 00 00 00 00   3%...... ........
+00000090: 8a 07 00 00 00 00 00 00  33 25 00 00 00 00 00 00   ........ 3%......
+000000a0: 27 00 00 00 00 00 00 00  a3 07 00 00 00 00 00 00   '....... ........
+000000b0: 33 25 00 00 00 00 00 00  33 00 00 00 00 00 00 00   3%...... 3.......
+000000c0: af 07 00 00 00 00 00 00  33 25 00 00 00 00 00 00   ........ 3%......
+000000d0: 21 00 00 00 00 00 00 00  9d 07 00 00 00 00 00 00   !....... ........
+000000e0: 33 25 00 00 00 00 00 00  19 00 00 00 00 00 00 00   3%...... ........
+000000f0: 95 07 00 00 00 00 00 00  33 25 00 00 00 00 00 00   ........ 3%......
+00000100: 28 00 00 00 00 00 00 00  a4 07 00 00 00 00 00 00   (....... ........
+00000110: 33 25 00 00 00 00 00 00  30 00 00 00 00 00 00 00   3%...... 0.......
+00000120: ac 07 00 00 00 00 00 00  33 25 00 00 00 00 00 00   ........ 3%......
+00000130: 3b 00 00 00 00 00 00 00  b7 07 00 00 00 00 00 00   ;....... ........
+00000140: 33 25 00 00 00 00 00 00  22 00 00 00 00 00 00 00   3%...... ".......
+00000150: 9e 07 00 00 00 00 00 00  33 25 00 00 00 00 00 00   ........ 3%......
+00000160: 32 00 00 00 00 00 00 00  ae 07 00 00 00 00 00 00   2....... ........
+00000170: 33 25 00 00 00 00 00 00  0f 00 00 00 00 00 00 00   3%...... ........
+00000180: 8b 07 00 00 00 00 00 00  33 25 00 00 00 00 00 00   ........ 3%......
+00000190: 1b 00 00 00 00 00 00 00  97 07 00 00 00 00 00 00   ........ ........
+000001a0: 33 25 00 00 00 00 00 00  0a 00 00 00 00 00 00 00   3%...... ........
+000001b0: 86 07 00 00 00 00 00 00  33 25 00 00 00 00 00 00   ........ 3%......
+000001c0: 12 00 00 00 00 00 00 00  8e 07 00 00 00 00 00 00   ........ ........
+000001d0: 33 25 00 00 00 00 00 00  1a 00 00 00 00 00 00 00   3%...... ........
+000001e0: 96 07 00 00 00 00 00 00  33 25 00 00 00 00 00 00   ........ 3%......
+000001f0: 2a 00 00 00 00 00 00 00  a6 07 00 00 00 00 00 00   *....... ........
+00000200: 33 25 00 00 00 00 00 00  00 00 00 00 00 00 00 00   3%...... ........
+00000210: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+....
+
+=== Metadata block data type 0x0105
+Metadata block data type 0x0105 contains information about [yellow-background]*TODO: describe*
+
+The metadata block data is variable in size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 4 | | [yellow-background]*Number of entries*
+| 4 | 4 | | [yellow-background]*Unknown (Empty values)*
+| 8 | ... | | [yellow-background]*Array of entries* +
+[yellow-background]*Where an entry is 8 bytes?*
+|===
+
+....
+unencrypted no LV (LVG only)
+00000000: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+Both encrypted and unencrypted?
+number of values?
+00004040: 01 00 00 00 00 00 00 00  09 00 00 00 00 00 00 00   ........ ........
+00004050: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00005ff0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+00004040: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00005ff0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+10.8 encrypted
+00000000: 01 00 00 00 00 00 00 00  09 00 00 00 00 00 00 00   ........ ........
+00000010: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+00000000: 01 00 00 00 00 00 00 00  0f 00 00 00 00 00 00 00   ........ ........
+00000010: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+....
+
+=== Metadata block data type 0x0205
+....
+0000e040: 01 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+0000e050: 06 00 00 00 00 00 00 00  ff ff ff ff ff ff ff ff   ........ ........
+0000e060: ff ff ff ff ff ff ff ff  ff ff ff ff ff ff ff ff   ........ ........
+0000e070: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+0000fff0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+10.8 encrypted
+00000000: 01 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000010: 06 00 00 00 00 00 00 00  ff ff ff ff ff ff ff ff   ........ ........
+00000020: ff ff ff ff ff ff ff ff  ff ff ff ff ff ff ff ff   ........ ........
+00000030: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+10.10 unencrypted
+00000000: 01 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000010: 0b 00 00 00 00 00 00 00  ff ff ff ff ff ff ff ff   ........ ........
+00000020: ff ff ff ff ff ff ff ff  ff ff ff ff ff ff ff ff   ........ ........
+00000030: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+....
+
+=== Metadata block data type 0x0304
+Metadata block data type 0x0304 contains information about [yellow-background]*TODO: describe*
+
+The metadata block data is variable in size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 4 | | Number of entries
+| 4 | 4 | | [yellow-background]*Unknown (Empty values)*
+| 8 | ... | | Array of entries
+|===
+
+The metadata block data type 0x0305 array entry is 40 bytes in size and
+consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| 0 | 8 | | [yellow-background]*Unknown*
+| 8 | 8 | | [yellow-background]*Unknown*
+| 16 | 4 | | Number of blocks
+| 20 | 4 | | [yellow-background]*Unknown* +
+[yellow-background]*0 if not set e.g. non-removable?*
+| 24 | 4 | | [yellow-background]*Unknown*
+| 28 | 4 | | [yellow-background]*Unknown*
+| 32 | 4 | | Block number +
+Contains the first block number relative from the start of the Core Storage volume of the logical volume data +
+[yellow-background]*0 if not set e.g. non-removable?*
+| 36 | 4 | | [yellow-background]*Unknown*
+|===
+
+....
+what is the relationship between 0x304 and 0x0404?
+
+00000000: 74 00 00 00 00 00 00 00                            t....... ........
+
+40 byte entry?
+00000000:                          00 00 00 00 00 00 00 00   t....... ........
+00000010: 80 0c 01 00 00 00 00 00  20 00 00 00 00 00 40 00   ........  .....@.
+00000020: 00 00 00 00 00 00 00 00  c0 8b 02 00 00 00 00 00   ........ ........
+
+00000030: 00 00 00 00 00 00 00 00  a0 0c 01 00 00 00 00 00   ........ ........
+00000040: 20 00 00 00 00 00 40 00  00 00 00 00 00 00 00 00    .....@. ........
+00000050: a0 6c 01 00 00 00 00 00                            .l...... ........
+
+00000050:                          00 00 00 00 00 00 00 00   .l...... ........
+00000060: c0 0c 01 00 00 00 00 00  20 00 00 00 00 00 40 00   ........  .....@.
+00000070: 00 00 00 00 00 00 00 00  00 e1 02 00 00 00 00 00   ........ ........
+00000080: 00 00 00 00 00 00 00 00  e0 0c 01 00 00 00 00 00   ........ ........
+00000090: 20 00 00 00 00 00 40 00  00 00 00 00 00 00 00 00    .....@. ........
+000000a0: 20 1e 01 00 00 00 00 00  00 00 00 00 00 00 00 00    ....... ........
+000000b0: 00 0d 01 00 00 00 00 00  20 00 00 00 00 00 40 00   ........  .....@.
+000000c0: 00 00 00 00 00 00 00 00  20 e1 02 00 00 00 00 00   ........  .......
+000000d0: 00 00 00 00 00 00 00 00  20 0d 01 00 00 00 00 00   ........  .......
+000000e0: 20 00 00 00 00 00 40 00  00 00 00 00 00 00 00 00    .....@. ........
+000000f0: 40 60 00 00 00 00 00 00  00 00 00 00 00 00 00 00   @`...... ........
+00000100: 40 0d 01 00 00 00 00 00  20 00 00 00 00 00 40 00   @.......  .....@.
+00000110: 00 00 00 00 00 00 00 00  e0 e3 00 00 00 00 00 00   ........ ........
+00000120: 00 00 00 00 00 00 00 00  60 0d 01 00 00 00 00 00   ........ `.......
+00000130: 20 00 00 00 00 00 40 00  00 00 00 00 00 00 00 00    .....@. ........
+00000140: 40 e1 02 00 00 00 00 00  00 00 00 00 00 00 00 00   @....... ........
+00000150: 80 0d 01 00 00 00 00 00  20 00 00 00 00 00 40 00   ........  .....@.
+00000160: 00 00 00 00 00 00 00 00  80 03 00 00 00 00 00 00   ........ ........
+00000170: 00 00 00 00 00 00 00 00  a0 0d 01 00 00 00 00 00   ........ ........
+00000180: 20 00 00 00 00 00 40 00  00 00 00 00 00 00 00 00    .....@. ........
+00000190: 60 0c 01 00 00 00 00 00  00 00 00 00 00 00 00 00   `....... ........
+000001a0: c0 0d 01 00 00 00 00 00  20 00 00 00 00 00 40 00   ........  .....@.
+000001b0: 00 00 00 00 00 00 00 00  a0 03 00 00 00 00 00 00   ........ ........
+000001c0: 00 00 00 00 00 00 00 00  e0 0d 01 00 00 00 00 00   ........ ........
+000001d0: 40 00 00 00 00 00 40 00  00 00 00 00 00 00 00 00   @.....@. ........
+...
+000011e0: 40 b9 03 00 00 00 00 00  20 00 00 00 00 00 40 00   @.......  .....@.
+000011f0: 00 00 00 00 00 00 00 00  c0 e3 02 00 00 00 00 00   ........ ........
+00001200: 00 00 00 00 00 00 00 00  60 b9 03 00 00 00 00 00   ........ `.......
+00001210: a0 45 b9 01 00 00 40 00  00 00 00 00 00 00 00 00   .E....@. ........
+00001220: 60 b9 04 00 00 00 00 00                            `....... ........
+
+00001220:                          00 00 00 00 00 00 00 00   `....... ........
+00001230: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+....
+
+=== Metadata block data type 0x0305
+Metadata block data type 0x0305 contains information about the logical volumes.
+
+[yellow-background]*At the moment it is assumed that a logical volume group can
+contain only a single logical volume.*
+
+The metadata block data is variable in size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 4 | 1 | Number of entries
+| 4 | 4 | | [yellow-background]*Unknown (empty values)*
+| 8 | ... | | Array of entries
+|===
+
+The metadata block data type 0x0305 array entry is 40 bytes in size and
+consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| 0 | 8 | | [yellow-background]*Unknown*
+| 8 | 8 | | [yellow-background]*Unknown*
+| 16 | 4 | | Number of blocks
+| 20 | 4 | | [yellow-background]*Unknown* +
+[yellow-background]*0 if not set e.g. non-removable?*
+| 24 | 4 | | [yellow-background]*Unknown*
+| 28 | 4 | | [yellow-background]*Unknown*
+| 32 | 4 | | Block number +
+Contains the first block number relative from the start of the Core Storage volume of the logical volume data +
+[yellow-background]*0 if not set e.g. non-removable?*
+| 36 | 4 | | [yellow-background]*Unknown*
+|===
+
+[yellow-background]*TODO: could this be used as volume offset of removable media?*
+
+....
+00006040: 01 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00006050: 00 00 00 00 00 00 00 00  c8 50 5e 00 00 00 00 00   ........ .P^.....
+00006060: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00007ff0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+number of blocks
+
+Number of volumes?
+Volume size in bytes
+
+00000000: 01 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000010: 00 00 00 00 00 00 00 00  f4 d5 00 00 00 00 00 00   ........ ........
+00000020: 00 00 00 00 00 00 00 00  01 1c 00 00 00 00 00 00   ........ ........
+00000030: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+10.8 encrypted
+00000000: 01 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000010: 00 00 00 00 00 00 00 00  67 e9 a3 04 00 00 00 00   ........ g.......
+00000020: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+00000000: 02 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000010: 00 00 00 00 00 00 00 00  67 c7 77 00 00 00 00 00   ........ g.w.....
+00000020: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000030: 00 00 00 00 00 00 00 00  67 c7 77 00 00 00 00 00   ........ g.w.....
+00000040: 00 22 2c 04 00 00 40 00  00 00 00 00 00 00 00 00   .",...@. ........
+00000050: 67 c7 78 00 00 00 00 00  00 00 00 00 00 00 00 00   g.x..... ........
+
+00000060: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+10.9 encrypted removable
+00000000: 01 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000010: 00 00 00 00 00 00 00 00  6c ee 00 00 00 00 40 00   ........ l.....@.
+00000020: 00 00 00 00 00 00 00 00  01 38 00 00 00 00 00 00   ........ .8......
+00000030: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ......
+
+10.10 encrypted removable
+00000000: 01 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000010: 00 00 00 00 00 00 00 00  6b ee 00 00 00 00 40 00   ........ k.....@.
+00000020: 00 00 00 00 00 00 00 00  00 40 00 00 00 00 00 00   ........ .@......
+00000030: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+....
+
+=== Metadata block data type 0x0404
+Metadata block data type 0x0404 contains information about data and metadata
+areas of the physical volume.
+
+The metadata block data is variable in size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 4 | | Number of data area descriptor
+| 4 | 4 | | [yellow-background]*Unknown (Empty values)*
+| 8 | ... | | Array of data area descriptors +
+See section: <<data_area_descriptor,Data area descriptor>>
+|===
+
+==== [[data_area_descriptor]]Data area descriptor
+The data area descriptor is 48 bytes of size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 8 | | physiscal block number
+| 8 | 8 | | number of blocks
+| 16 | 8 | | data type +
+See section: <<data_area_type,Data area type>>
+| 24 | 8 | | [yellow-background]*Unknown (copy number?)* +
+[yellow-background]*Where 0 is the original?*
+| 32 | 8 | | [yellow-background]*Unknown (empty values)*
+| 40 | 8 | | logical block number +
+Contains the block number within the logical volume the data area is mapped to.
+|===
+
+....
+Do multiple successive 0x0404 block form a single sequence of extents?
+....
+
+=== Metadata block data type 0x0405
+Metadata block data type 0x0405 contains information about data and metadata
+areas of the physical volume.
+
+The metadata block data is variable in size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 4 | | Number of data area descriptor
+| 4 | 4 | | [yellow-background]*Unknown (Empty values)*
+| 8 | ... | | Array of data area descriptors +
+See section: <<data_area_descriptor,Data area descriptor>>
+|===
+
+==== [[data_area_descriptor]]Data area descriptor
+The data area descriptor is 48 bytes of size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 8 | | block number
+| 8 | 8 | | number of blocks
+| 16 | 8 | | data type +
+See section: <<data_area_type,Data area type>>
+| 24 | 8 | | [yellow-background]*Unknown (copy number?)* +
+[yellow-background]*Where 0 is the original?*
+| 32 | 8 | | [yellow-background]*Unknown (empty values)*
+| 40 | 8 | | [yellow-background]*Unknown (logical volume block number)* +
+0x0000000000000000 (0) => [yellow-background]*Unknown* +
+0xfffffffffffffffe (-2) => [yellow-background]*Unknown (Continuation?)*
+|===
+
+[yellow-background]*TODO: what is the relationship between unknown2 of metadata block entry 0x0305 and 0x0405*
+
+==== [[data_area_type]]Data area type
+
+[cols="1,1,5",options="header"]
+|===
+| Value | Identifier | Description
+| 0x0000000000000009 (9) | | [yellow-background]*Unknown (LV (encrypted and unencrypted) ?*
+| 0x000000000000000a (10) | | [yellow-background]*Unknown (LV (encrypted) ?*
+| 0xfffffffffffffffb (-5) | | Unencrypted metadata
+| 0xfffffffffffffffc (-4) | | Volume header
+| 0xfffffffffffffffd (-3) | | Encrypted metadata
+|===
+
+==== Notes
+....
+libfvde_metadata_block_read: type                                       : 0x0405
+libfvde_metadata_block_read: serial number                              : 0x01d70000
+libfvde_metadata_block_read: unknown2                                   : 0x00000002
+libfvde_metadata_block_read: unknown3                                   : 0x00000007
+libfvde_metadata_block_read: number                                     : 7
+libfvde_metadata_block_read: unknown5                                   : 0x00000007
+
+libfvde_metadata_block_read: type                                       : 0x0405
+libfvde_metadata_block_read: serial number                              : 0x01d70000
+libfvde_metadata_block_read: unknown2                                   : 0x00000006
+libfvde_metadata_block_read: unknown3                                   : 0x00000007
+libfvde_metadata_block_read: number                                     : 30
+libfvde_metadata_block_read: unknown5                                   : 0x00000007
+
+unknown2 contains some sequence number? Where sequence 6 contains the extent
+of the encrypted volume?
+
+libfvde_encrypted_metadata_read_type_0x0405: entry: 05 block number     : 16384
+libfvde_encrypted_metadata_read_type_0x0405: entry: 05 number of blocks : 61035
+libfvde_encrypted_metadata_read_type_0x0405: entry: 05 block type       : 0x0000000a
+libfvde_encrypted_metadata_read_type_0x0405: entry: 05 copy number      : 0
+libfvde_encrypted_metadata_read_type_0x0405: entry: 05 unknown1         : 0x00000000
+libfvde_encrypted_metadata_read_type_0x0405: entry: 05 unknown2         : 0x00000000
+
+Does 0x0000000a relate to unknown3 in the block header? Maybe for removable drive
+does not seem to be the case for a system drive.
+
+libfvde_metadata_block_read: type                                       : 0x0019
+libfvde_metadata_block_read: serial number                              : 0x01d70000
+libfvde_metadata_block_read: unknown2                                   : 0x00000006
+libfvde_metadata_block_read: unknown3                                   : 0x0000000a
+libfvde_metadata_block_read: number                                     : 33
+libfvde_metadata_block_read: unknown5                                   : 0x0000000a
+
+<dict ID="0"><key>com.apple.corestorage.lvf.encryption.context</key>
+....
+
+=== Metadata block data type 0x0505
+Metadata block data type 0x0505 contains information about location of the
+logical volume data inside the physical volume. This block type is used in
+combination with encrypted system volumes.
+
+The metadata block data is variable in size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 4 | 1 | Number of entries
+| 4 | 4 | | [yellow-background]*Unknown (empty values)*
+| 8 | ... | | Array of entries
+|===
+
+The metadata block data type 0x0505 array entry is 16 bytes in size and
+consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 8 | | Number of blocks +
+| 8 | 8 | | Block number +
+Contains the first block number relative from the start of the Core Storage volume of the encrypted logical volume data
+|===
+
+[yellow-background]*Note is it possible that the logical volume data can span multiple extents?*
+
+[yellow-background]*Note that the 0x0505 block can be defined before the 0x001a block.*
+
+=== Metadata block data type 0x0605
+....
+Seen in system volume
+
+00000000: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+10.8 encrypted
+00000000: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+
+10.10 unencrypted
+00000000: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+....
+
+== The encryption context plist
+The encryption context plist either the EncryptedRoot.plist.wipekey stored on
+the "Recovery HD" partition of the system disk that also contains the FileVault
+encrypted volume, or the XML plist-like data identified as
+"com.apple.corestorage.lvf.encryption.context" stored in the encrypted
+metadata, contains the encrypted VMKs necessary to unlock the encrypted volume.
+
+The EncryptedRoot.plist.wipekey is encrypted and can be decrypted using 128-bit
+AES-XTS:
+
+* as primary key the physical volume identifier of the FileVault encrypted volume (128-bit)
+* as secondary key 0 (128-bit)
+* a tweak value of 0
+* a cypher block size as the entire file
+
+The unencrypted encryption context plist contains:
+
+* A PassphraseWrappedKEKStruct; one for each recovery or user passwords
+* A KEKWrappedVolumeKeyStruct containing the volume key
+
+Below an example of the contents of an unencrypted EncryptedRoot.plist.wipekey
+file.
+....
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+        <key>ConversionInfo</key>
+        <dict>
+                <key>ConversionStatus</key>
+                <string>Complete</string>
+                <key>TargetContext</key>
+                <integer>1</integer>
+        </dict>
+        <key>CryptoUsers</key>
+        <array>
+                <dict>
+                        ...
+                        <key>PassphraseWrappedKEKStruct</key>
+                        <data>
+                        ...
+                        </data>
+                        ...
+                </dict>
+                <dict>
+                ...
+                </dict>
+        </array>
+        <key>LastUpdateTime</key>
+        <integer>1323243315</integer>
+        <key>WrappedVolumeKeys</key>
+        <array>
+                <dict>
+                        <key>BlockAlgorithm</key>
+                        <string>None</string>
+                        <key>KEKWrappedVolumeKeyStruct</key>
+                        <data>
+                        </data>
+                        ...
+                </dict>
+                <dict>
+                        <key>BlockAlgorithm</key>
+                        <string>AES-XTS</string>
+                        <key>KEKWrappedVolumeKeyStruct</key>
+                        <data>
+                        ...
+                        </data>
+                        ...
+                </dict>
+        </array>
+</dict>
+</plist>
+....
+
+[NOTE]
+The doctype and plist definition are not present in the XML plist-like data
+identified as "com.apple.corestorage.lvf.encryption.context".
+
+Both the PassphraseWrappedKEKStruct and KEKWrappedVolumeKeyStruct are stored as
+base64.
+
+[yellow-background]*Is a 52 character limit (per line) enforced for the base64 encoded data?*
+
+The purpose of the first KEKWrappedVolumeKeyStruct in the
+EncryptedRoot.plist.wipekey file is currently unknown.
+
+[cols="1,1",options="header"]
+|===
+| Key | Description
+| ConversionInfo | Encrypted volume conversion status
+| CryptoUsers | Information about user accounts that can access the encrypted volume
+| LastUpdateTime | Date and time the EncryptedRoot.plist.wipekey was updated. +
+Contains the number of seconds since January 1, 1970 00:00:00 UTC.
+| WrappedVolumeKeys | Key protected volume keys
+|===
+
+=== ConversionInfo
+
+[cols="1,1",options="header"]
+|===
+| Key | Description
+| ConversionStatus | The volume conversion (or encyption) status: +
+Complete => the volume is fully encrypted +
+Converting => the volume is being encrypted +
+NoConversion => [yellow-background]*TODO* +
+Pending => the volume is to be encrypted.
+| TargetContext | [yellow-background]*Unknown (the index of the encryption context to be used.)*
+|===
+
+=== CryptoUsers
+
+[cols="1,1",options="header"]
+|===
+| Key | Description
+| EFILoginGraphics |
+| KeyEncryptingKeyIdent | The identifier of the key encrypting key +
+Consists of a string containing an UUID +
+[yellow-background]*Corresponds to an entry in WrappedVolumeKeys?*
+| PassphraseHint | The passphrase hint
+| PassphraseWrappedKEKStruct |
+| UserFullName | User full name
+| UserIcon | User icon +
+Contains base64 encoded data +
+[yellow-background]*TODO what image format?*
+| UserIdent | User identifier +
+Consists of a string containing an UUID
+| UserNamesData | The usernames data +
+Consists of an array containing base64 encoded data or an empty string if not set
+| UserType | [yellow-background]*The user type flags?* +
+Seen: 0x10010005, 0x10060002
+| WrapVersion | [yellow-background]*The format version of the PassphraseWrappedKEKStruct ?* +
+Seen 1
+|===
+
+==== PassphraseWrappedKEKStruct
+The PassphraseWrappedKEKStruct is 284 bytes of size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 4 | 3 | Value type
+| 4 | 4 | 16 | Value size
+| 8 | 16 | | Salt for the PBKDF2 +
+(Password-Based Key Derivation Function)
+| 24 | 4 | 16 | Value type
+| 28 | 4 | 24 | Value size
+| 32 | 24 | | Primary key to unlock the KEKWrappedVolumeKeyStruct +
+Contains WrappedKEK
+| 56 | 4 | 8 | [yellow-background]*Unknown*
+| 60 | 8 | | [yellow-background]*Unknown (empty values)*
+| 68 | 4 | 1 | [yellow-background]*Unknown*
+| 72 | 72 | | [yellow-background]*Unknown (empty values)*
+| 144 | 4 | 1 | [yellow-background]*Unknown*
+| 148 | 4 | 3 | [yellow-background]*Unknown*
+| 152 | 4 | 10 | [yellow-background]*Unknown*
+| 156 | 12 | | [yellow-background]*Unknown*
+| 168 | 4 | | [yellow-background]*Unknown*
+| 172 | 4 | | Number of iterations for the PBKDF2 +
+(Password-Based Key Derivation Function)
+| 176 | 4 | 1 | [yellow-background]*Unknown*
+| 180 | 4 | 3 | [yellow-background]*Unknown*
+| 184 | 4 | 10 | [yellow-background]*Unknown*
+| 188 | 96 | | [yellow-background]*Unknown*
+|===
+
+=== WrappedVolumeKeys
+
+[cols="1,1",options="header"]
+|===
+| Key | Description
+| BlockAlgorithm | The encryption method. +
+Seen: AES-XTS, None
+| KEKWrappedVolumeKeyStruct | The Key encrypted key wrapped volume key
+| KeyEncryptingKeyIdent | The identifier of the key encrypting key +
+Consists of a string containing an UUID +
+[yellow-background]*Corresponds to an entry in CryptoUsers?*
+| VolumeKeyIdent | The identifier of the volume key +
+Consists of a string containing an UUID
+| VolumeKeyIndex | [yellow-background]*The index of the wrapped volume key in the WrappedVolumeKeys array?*
+| WrapVersion | [yellow-background]*The format version of the KEKWrappedVolumeKeyStruct ?* +
+Seen 1
+|===
+
+==== [[key_encrypted_key_wrapped_volume_key]]Key encrypted key wrapped volume key
+The Key encrypted key wrapped volume key (KEKWrappedVolumeKeyStruct) is 256
+bytes of size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 4 | 2 | Value type
+| 4 | 4 | 24 | Value size
+| 8 | 24 | | Volume key +
+Contains a <<wrapped_kek,WrappedKEK>>
+| 32 | 4 | 8 | [yellow-background]*Unknown*
+| 36 | 8 | | [yellow-background]*Unknown (empty values)*
+| 44 | 4 | 1 | [yellow-background]*Unknown*
+| 48 | 4 | | [yellow-background]*Unknown (empty values)*
+| 52 | 4 | 1 | [yellow-background]*Unknown*
+| 56 | 4 | 8 | [yellow-background]*Unknown*
+| 60 | 8 | | [yellow-background]*Unknown (empty values)*
+| 68 | 4 | 1 | [yellow-background]*Unknown*
+| 72 | 72 | | [yellow-background]*Unknown (empty values)*
+| 144 | 4 | 1 | [yellow-background]*Unknown*
+| 148 | 4 | 3 | [yellow-background]*Unknown*
+| 152 | 4 | 10 | [yellow-background]*Unknown*
+| 156 | 96 | | [yellow-background]*Unknown*
+| 252 | 4 | 1 | [yellow-background]*Unknown*
+|===
+
+=== [[wrapped_kek]]WrappedKEK
+The WrappedKEK is 24 bytes of size and consists of:
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | 8 | | Initialization vector +
+Once unencrypted it should be: +
+"\xa6\xa6\xa6\xa6\xa6\xa6\xa6\xa6"
+| 8 | 16 | | Key data
+|===
+
+== Notes
+The metadata can be seen as having a hierarchical structure, where each
+metadata block is composed of:
+
+* a metadata block header
+* a metadata block data
+
+If the "volume groups descriptor" from the metadata block header is not empty
+(i.e. is different than 0x00000000), then this metadata block points to some
+sub-blocks (children blocks), which might be or not encrypted depending on the
+type of the parent metadata block or some other information (unsure of this for
+now).
+
+For example, in one test image, the first disklabel metadata appears to have
+4096 sub-blocks. Most of these 4096 are encrypted (with keys from the CS
+header), but some of them (e.g. blocks 60-61) are zero (so when decrypted we
+should expect some crappy data).
+
+Note: I see that the tool only outputs some of these blocks while in
+debug/verbose mode and then goes to decrypt the EncryptedRoot.plist.wipekey
+file. Or am I missing something?
+
+The CoreStorage header provides the pointers to four parent metadata blocks,
+which we call DiskLabel metadata. These parent blocks seem to have type 0x0011.
+The size of these parent blocks is defined in the volume header, in the
+"metadata size" field; this is commonly 4 MiB.
+
+=== Backup of EncryptedRoot.plist.wipekey?
+/System/Library/Caches/com.apple.corestorage/EncryptedRoot.plist.wipekey
+
+=== Determining the logical volume size and offset
+
+[yellow-background]*TODO: use most recent block group*
+
+Metadata block data type 0x0505
+
+* If present
+* If number of entries is 1
+* If logical volume number of blocks greater than 0
+* Use the last block
+
+Metadata block data type 0x0305
+
+* If present
+* Use the last entry
+* Use the last block
+
+Metadata block data type 0x0405
+
+* If present
+* Use the entry where data type is 0x09 or 0x0a and unknown2 is not set
+* Use the last block
+
+=== Determining the logical volume size and offset
+
+Metadata block data type 0x0505, if present, contains the base offset?
+
+=== Block type 0x0011
+....
+checksum                                   : 0x1eef1926
+initial value                              : 0xffffffff
+version                                    : 1
+type                                       : 0x0011
+serial number                              : 0x01120400
+unknown2                                   : 0x00002598
+unknown3                                   : 0x00000000
+number                                     : 0
+unknown5                                   : 0x00000000
+size                                       : 8192
+unknown6                                   : 0x00000000
+unknown7                                   : 0x00000000
+
+data:
+00000000: 00 00 40 00 03 00 00 00  f9 92 3b bf ff ff ff ff   ..@..... ..;.....
+00000010: 07 57 7e c0 00 04 12 01  00 07 12 01 10 27 01 00   .W~..... .....'..
+00000020: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00000050: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000060: 00 00 00 00 00 00 00 00  0c 00 00 00 0d 00 00 00   ........ ........
+00000070: 40 00 00 00 30 00 01 00  01 00 00 00 01 00 01 00   @...0... ........
+00000080: 00 08 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+00000090: 00 00 00 00 00 00 00 00  00 00 00 00 00 20 00 00   ........ ..... ..
+000000a0: 30 20 00 00 79 01 00 00  79 01 00 00 00 00 00 00   0 ..y... y.......
+000000b0: 14 cc c0 01 00 00 00 00  0a 00 00 00 00 00 00 00   ........ ........
+
+Block type 0x0011 (2nd)
+000000c0: 98 25 00 00 00 00 00 00  0c 00 00 00 00 00 00 00   .%...... ........
+000000d0: 22 00 00 00 00 00 00 00                            "....... .%......
+
+Block type 0x0011 (1st)
+000000d0:                          97 25 00 00 00 00 00 00   "....... .%......
+000000e0: 0c 00 00 00 00 00 00 00  1e 00 00 00 00 00 00 00   ........ ........
+
+Block type 0x0011 (4th)
+000000f0: 96 25 00 00 00 00 00 00  0c 00 00 00 00 00 00 00   .%...... ........
+00000100: 1a 00 00 00 00 00 00 00                            ........ .%......
+
+Block type 0x0011 (3rd)
+00000100:                          95 25 00 00 00 00 00 00   ........ .%......
+00000110: 0c 00 00 00 00 00 00 00  16 00 00 00 00 00 00 00   ........ ........
+
+
+00000120: 92 25 00 00 00 00 00 00  0b 00 00 00 00 00 00 00   .%...... ........
+00000130: 17 00 00 00 00 00 00 00  91 25 00 00 00 00 00 00   ........ .%......
+00000140: 0b 00 00 00 00 00 00 00  13 00 00 00 00 00 00 00   ........ ........
+00000150: 90 25 00 00 00 00 00 00  0b 00 00 00 00 00 00 00   .%...... ........
+00000160: 0f 00 00 00 00 00 00 00  8f 25 00 00 00 00 00 00   ........ .%......
+00000170: 0b 00 00 00 00 00 00 00  0b 00 00 00 00 00 00 00   ........ ........
+00000180: 8c 25 00 00 00 00 00 00  16 00 00 00 00 00 00 00   .%...... ........
+00000190: 0c 00 00 00 00 00 00 00  8b 25 00 00 00 00 00 00   ........ .%......
+000001a0: 16 00 00 00 00 00 00 00  08 00 00 00 00 00 00 00   ........ ........
+
+000001b0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+...
+00001fb0: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00   ........ ........
+....
+
+=== Removable volume
+....
+dd if=/dev/zero of=fv2test.raw bs=1024000 count=512
+
+hdiutil attach -imagekey diskimage-class=CRawDiskImage -nomount fv2test.raw
+
+Create GPT partition and create HFS+ file-system on it (needs HFS system on osx 10.8)
+
+diskutil cs convert /dev/disk1s1 -passphrase
+
+256 MiB too small to convert a FV2 volume 1 GiB works
+
+Does not create an encryption context? Encrypted extents?
+
+10005000  08 9e ce 5a 21 c4 f1 0b  12 8d 25 27 52 86 66 9e  |...Z!.....%'R.f.|
+...
+3bffa000  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+
+Reverting volume fills volume at offset 0x5000
+
+
+Alternative method:
+sudo diskutil cs create TESTLVG disk2
+
+
+dd if=/dev/zero of=fv2test.raw bs=1024 count=$(( 1024 * 1024 ))
+hdiutil attach -imagekey diskimage-class=CRawDiskImage -nomount fv2test.raw
+diskutil cs create TESTLVG disk2
+get LVG_UUID from the output of the previous command or "diskutil cs list"
+
+diskutil cs createVolume $LVG_UUID jhfs+ TestLV 100%
+diskutil cs createVolume $LVG_UUID jhfs+ TestLV 100% -passphrase
+hdiutil detach /dev/disk3
+hdiutil detach /dev/disk2
+
+16 MiB too small to create a CS volume, 64 MiB works (to create CS) but not encrypted volume, 1GiB works
+
+diskutil cs decryptVolume $LV_UUID
+will decrypt the volume but the data on-disk is still encrypted with the key data in the volume header.
+....
+
+=== Core storage
+Logical Volume Group
+
+* One or more physical volumes
+** Logical Volume Family
+** Logical Volume
+
+yellow-background]*Only a single LV allowed per LVG?*
+
+....
+diskutil cs createVolume ...
+
+Your Logical Volume Group already has a Logical Volume
+....
+
+=== Partial encrypted volume
+Seen in 10.7 partial encrypted volume
+
+Encrypted volume header:
+....
+00000000: 00 63 00 6d 00 70 00 66  00 73 00 00 00 10 00 00   .c.m.p.f .s......
+00000010: 00 00 00 00 00 00 00 00  02 3c 66 70 6d 63 03 00   ........ .<fpmc..
+00000020: 00 00 98 06 00 00 00 00  00 00 78 5e a5 55 5b 6f   ........ ..x^.U[o
+....
+
+Big-endian
+
+[cols="1,1,1,5",options="header"]
+|===
+| Offset | Size | Value | Description
+| 0 | ... | | [yellow-background]*Unknown (identifier)*
+Contains an UTF-16 big-endian string with end-of-string character
+| ... | 4 | 0x1000 | [yellow-background]*Unknown*
+| ... | 8 | | [yellow-background]*Unknown (Empty values)*
+| ... | 2 | | data size
+4+| _data_
+| ... | 4 | "fpmc" | [yellow-background]*Unknown (data signature?)*
+| ... | 4 | | [yellow-background]*Unknown*
+| ... | 4 | | uncompressed XML plist data size
+| ... | 4 | | [yellow-background]*Unknown (Empty values)*
+| ... | .. | | compressed XML plist data +
+Contains zlib compressed data
+|===
+
+....
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>BuildMachineOSBuild</key>
+	<string>11E53</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>English</string>
+	<key>CFBundleExecutable</key>
+	<string>CertsKeychainMonitor</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.apple.servermgrd.CertsKeychainMonitor</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>CertsKeychainMonitor</string>
+	<key>CFBundlePackageType</key>
+	<string>BNDL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.1</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleVersion</key>
+	<string>1.1</string>
+	<key>CFPlugInDynamicRegisterFunction</key>
+	<string></string>
+	<key>CFPlugInDynamicRegistration</key>
+	<string>NO</string>
+	<key>CFPlugInFactories</key>
+	<dict>
+		<key>FB86416D-6164-2070-726F-70735C216EC0</key>
+		<string>UserEventAgentFactory</string>
+	</dict>
+	<key>CFPlugInTypes</key>
+	<dict>
+		<key>FC86416D-6164-2070-726F-70735C216EC0</key>
+		<array>
+			<string>FB86416D-6164-2070-726F-70735C216EC0</string>
+		</array>
+	</dict>
+	<key>CFPlugInUnloadFunction</key>
+	<string></string>
+	<key>DTCompiler</key>
+	<string></string>
+	<key>DTPlatformBuild</key>
+	<string>11E53</string>
+	<key>DTPlatformVersion</key>
+	<string>GM</string>
+	<key>DTSDKBuild</key>
+	<string>11E53</string>
+	<key>DTSDKName</key>
+	<string></string>
+	<key>DTXcode</key>
+	<string>0410</string>
+	<key>DTXcodeBuild</key>
+	<string>11E53</string>
+	<key>LimitLoadToSessionType</key>
+	<string>System</string>
+</dict>
+</plist>
+....
+
+....
+1c805650  fe 02 2f 45 26 36                                 |../E&6..........|
+
+1c805650                    00 2e  00 00 00 07 10 fc 00 00  |../E&6..........|
+1c805660  00 00 00 11                                       |.....c.o.m...a.p|
+
+1c805660              00 63 00 6f  00 6d 00 2e 00 61 00 70  |.....c.o.m...a.p|
+1c805670  00 70 00 6c 00 65 00 2e  00 64 00 65 00 63 00 6d  |.p.l.e...d.e.c.m|
+1c805680  00 70 00 66 00 73 00 00  00 10 00 00 00 00 00 00  |.p.f.s..........|
+1c805690  00 00 00 00 00 10 66 70  6d 63 04 00 00 00 10 66  |......fpmc.....f|
+1c8056a0  01 00 00 00 00 00                                 |................|
+
+1c8056a0                    00 2e  00 00 00 07 10 fe 00 00  |................|
+1c8056b0  00 00 00 11 00 63 00 6f  00 6d 00 2e 00 61 00 70  |.....c.o.m...a.p|
+1c8056c0  00 70 00 6c 00 65 00 2e  00 64 00 65 00 63 00 6d  |.p.l.e...d.e.c.m|
+1c8056d0  00 70 00 66 00 73 00 00  00 10 00 00 00 00 00 00  |.p.f.s..........|
+1c8056e0  00 00 00 00 01 c0 66 70  6d 63 03 00 00 00 cd 06  |......fpmc......|
+1c8056f0  00 00 00 00 00 00 78 5e  cd 93 db 6a db 40 10 86  |......x^...j.@..|
+1c805700  af e3 a7 50 45 2e 9a 16  6b 1c 42 0e 2e b2 1c 1f  |...PE...k.B.....|
+...
+1c805eb0  df 43 72 7c 0d a2 c9 5f  3e fe 8c 6c              |.Cr|..._>..l....|
+
+1c805eb0                                       00 2e 00 00  |.Cr|..._>..l....|
+1c805ec0  00 07 11 07 00 00 00 00  00 11 00 63 00 6f 00 6d  |...........c.o.m|
+1c805ed0  00 2e 00 61 00 70 00 70  00 6c 00 65 00 2e 00 64  |...a.p.p.l.e...d|
+1c805ee0  00 65 00 63 00 6d 00 70  00 66 00 73 00 00 00 10  |.e.c.m.p.f.s....|
+1c805ef0  00 00 00 00 00 00 00 00  00 00 00 10 66 70 6d 63  |............fpmc|
+1c805f00  04 00 00 00 00 f7 0c 00  00 00 00 00 00 00 00 00  |................|
+1c805f10  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+....
+
+:numbered!:
+[appendix]
+== References
+
+`[IEEE 1619-2007]`
+
+[cols="1,5",options="header"]
+|===
+| Title: | The XTS-AES Tweakable Block Cipher (IEEE 1619-2007)
+| Author(s): | IEEE
+| Date: | April 18, 2008
+| URL: | http://axelkenzo.ru/downloads/1619-2007-NIST-Submission.pdf +
+https://bitbucket.org/garethl/xtssharp/src/0e6a81a823e9/docs/1619-2007-NIST-Submission.pdf
+|===
+
+`[RFC1950]`
+
+[cols="1,5",options="header"]
+|===
+| Title: | ZLIB Compressed Data Format Specification
+| Version: | 3.3
+| Author(s): | P. Deutsch, J-L. Gailly
+| Date: | May 1996
+| URL: | http://www.ietf.org/rfc/rfc1950.txt
+|===
+
+`[RFC1951]`
+
+[cols="1,5",options="header"]
+|===
+| Title: | DEFLATE Compressed Data Format Specification
+| Version: | 1.3
+| Author(s): | P. Deutsch
+| Date: | May 1996
+| URL: | http://www.ietf.org/rfc/rfc1951.txt
+|===
+
+`[RFC2898]`
+[cols="1,5",options="header"]
+|===
+| Title: | PKCS #5: Password-Based Cryptography Specification
+| Version: | 2.0
+| URL: | http://tools.ietf.org/html/rfc2898
+|===
+
+`[WIKIPEDIA-PBKDF2]`
+
+[cols="1,5",options="header"]
+|===
+| Title: | PBKDF2
+| URL: | http://en.wikipedia.org/wiki/PBKDF2
+|===
+
+[appendix]
+== GNU Free Documentation License
+Version 1.3, 3 November 2008
+Copyright © 2000, 2001, 2002, 2007, 2008 Free Software Foundation, Inc.
+<http://fsf.org/>
+
+Everyone is permitted to copy and distribute verbatim copies of this license
+document, but changing it is not allowed.
+
+=== 0. PREAMBLE
+The purpose of this License is to make a manual, textbook, or other functional
+and useful document "free" in the sense of freedom: to assure everyone the
+effective freedom to copy and redistribute it, with or without modifying it,
+either commercially or noncommercially. Secondarily, this License preserves for
+the author and publisher a way to get credit for their work, while not being
+considered responsible for modifications made by others.
+
+This License is a kind of "copyleft", which means that derivative works of the
+document must themselves be free in the same sense. It complements the GNU
+General Public License, which is a copyleft license designed for free software.
+
+We have designed this License in order to use it for manuals for free software,
+because free software needs free documentation: a free program should come with
+manuals providing the same freedoms that the software does. But this License is
+not limited to software manuals; it can be used for any textual work,
+regardless of subject matter or whether it is published as a printed book. We
+recommend this License principally for works whose purpose is instruction or
+reference.
+
+=== 1. APPLICABILITY AND DEFINITIONS
+This License applies to any manual or other work, in any medium, that contains
+a notice placed by the copyright holder saying it can be distributed under the
+terms of this License. Such a notice grants a world-wide, royalty-free license,
+unlimited in duration, to use that work under the conditions stated herein. The
+"Document", below, refers to any such manual or work. Any member of the public
+is a licensee, and is addressed as "you". You accept the license if you copy,
+modify or distribute the work in a way requiring permission under copyright law.
+
+A "Modified Version" of the Document means any work containing the Document or
+a portion of it, either copied verbatim, or with modifications and/or
+translated into another language.
+
+A "Secondary Section" is a named appendix or a front-matter section of the
+Document that deals exclusively with the relationship of the publishers or
+authors of the Document to the Document's overall subject (or to related
+matters) and contains nothing that could fall directly within that overall
+subject. (Thus, if the Document is in part a textbook of mathematics, a
+Secondary Section may not explain any mathematics.) The relationship could be a
+matter of historical connection with the subject or with related matters, or of
+legal, commercial, philosophical, ethical or political position regarding them.
+
+The "Invariant Sections" are certain Secondary Sections whose titles are
+designated, as being those of Invariant Sections, in the notice that says that
+the Document is released under this License. If a section does not fit the
+above definition of Secondary then it is not allowed to be designated as
+Invariant. The Document may contain zero Invariant Sections. If the Document
+does not identify any Invariant Sections then there are none.
+
+The "Cover Texts" are certain short passages of text that are listed, as
+Front-Cover Texts or Back-Cover Texts, in the notice that says that the
+Document is released under this License. A Front-Cover Text may be at most 5
+words, and a Back-Cover Text may be at most 25 words.
+
+A "Transparent" copy of the Document means a machine-readable copy, represented
+in a format whose specification is available to the general public, that is
+suitable for revising the document straightforwardly with generic text editors
+or (for images composed of pixels) generic paint programs or (for drawings)
+some widely available drawing editor, and that is suitable for input to text
+formatters or for automatic translation to a variety of formats suitable for
+input to text formatters. A copy made in an otherwise Transparent file format
+whose markup, or absence of markup, has been arranged to thwart or discourage
+subsequent modification by readers is not Transparent. An image format is not
+Transparent if used for any substantial amount of text. A copy that is not
+"Transparent" is called "Opaque".
+
+Examples of suitable formats for Transparent copies include plain ASCII without
+markup, Texinfo input format, LaTeX input format, SGML or XML using a publicly
+available DTD, and standard-conforming simple HTML, PostScript or PDF designed
+for human modification. Examples of transparent image formats include PNG, XCF
+and JPG. Opaque formats include proprietary formats that can be read and edited
+only by proprietary word processors, SGML or XML for which the DTD and/or
+processing tools are not generally available, and the machine-generated HTML,
+PostScript or PDF produced by some word processors for output purposes only.
+
+The "Title Page" means, for a printed book, the title page itself, plus such
+following pages as are needed to hold, legibly, the material this License
+requires to appear in the title page. For works in formats which do not have
+any title page as such, "Title Page" means the text near the most prominent
+appearance of the work's title, preceding the beginning of the body of the text.
+
+The "publisher" means any person or entity that distributes copies of the
+Document to the public.
+
+A section "Entitled XYZ" means a named subunit of the Document whose title
+either is precisely XYZ or contains XYZ in parentheses following text that
+translates XYZ in another language. (Here XYZ stands for a specific section
+name mentioned below, such as "Acknowledgements", "Dedications",
+"Endorsements", or "History".) To "Preserve the Title" of such a section when
+you modify the Document means that it remains a section "Entitled XYZ"
+according to this definition.
+
+The Document may include Warranty Disclaimers next to the notice which states
+that this License applies to the Document. These Warranty Disclaimers are
+considered to be included by reference in this License, but only as regards
+disclaiming warranties: any other implication that these Warranty Disclaimers
+may have is void and has no effect on the meaning of this License.
+
+=== 2. VERBATIM COPYING
+You may copy and distribute the Document in any medium, either commercially or
+noncommercially, provided that this License, the copyright notices, and the
+license notice saying this License applies to the Document are reproduced in
+all copies, and that you add no other conditions whatsoever to those of this
+License. You may not use technical measures to obstruct or control the reading
+or further copying of the copies you make or distribute. However, you may
+accept compensation in exchange for copies. If you distribute a large enough
+number of copies you must also follow the conditions in section 3.
+
+You may also lend copies, under the same conditions stated above, and you may
+publicly display copies.
+
+=== 3. COPYING IN QUANTITY
+If you publish printed copies (or copies in media that commonly have printed
+covers) of the Document, numbering more than 100, and the Document's license
+notice requires Cover Texts, you must enclose the copies in covers that carry,
+clearly and legibly, all these Cover Texts: Front-Cover Texts on the front
+cover, and Back-Cover Texts on the back cover. Both covers must also clearly
+and legibly identify you as the publisher of these copies. The front cover must
+present the full title with all words of the title equally prominent and
+visible. You may add other material on the covers in addition. Copying with
+changes limited to the covers, as long as they preserve the title of the
+Document and satisfy these conditions, can be treated as verbatim copying in
+other respects.
+
+If the required texts for either cover are too voluminous to fit legibly, you
+should put the first ones listed (as many as fit reasonably) on the actual
+cover, and continue the rest onto adjacent pages.
+
+If you publish or distribute Opaque copies of the Document numbering more than
+100, you must either include a machine-readable Transparent copy along with
+each Opaque copy, or state in or with each Opaque copy a computer-network
+location from which the general network-using public has access to download
+using public-standard network protocols a complete Transparent copy of the
+Document, free of added material. If you use the latter option, you must take
+reasonably prudent steps, when you begin distribution of Opaque copies in
+quantity, to ensure that this Transparent copy will remain thus accessible at
+the stated location until at least one year after the last time you distribute
+an Opaque copy (directly or through your agents or retailers) of that edition
+to the public.
+
+It is requested, but not required, that you contact the authors of the Document
+well before redistributing any large number of copies, to give them a chance to
+provide you with an updated version of the Document.
+
+=== 4. MODIFICATIONS
+You may copy and distribute a Modified Version of the Document under the
+conditions of sections 2 and 3 above, provided that you release the Modified
+Version under precisely this License, with the Modified Version filling the
+role of the Document, thus licensing distribution and modification of the
+Modified Version to whoever possesses a copy of it. In addition, you must do
+these things in the Modified Version:
+
+A. Use in the Title Page (and on the covers, if any) a title distinct from that
+of the Document, and from those of previous versions (which should, if there
+were any, be listed in the History section of the Document). You may use the
+same title as a previous version if the original publisher of that version
+gives permission.
+
+B. List on the Title Page, as authors, one or more persons or entities
+responsible for authorship of the modifications in the Modified Version,
+together with at least five of the principal authors of the Document (all of
+its principal authors, if it has fewer than five), unless they release you from
+this requirement.
+
+C. State on the Title page the name of the publisher of the Modified Version,
+as the publisher.
+
+D. Preserve all the copyright notices of the Document.
+
+E. Add an appropriate copyright notice for your modifications adjacent to the
+other copyright notices.
+
+F. Include, immediately after the copyright notices, a license notice giving
+the public permission to use the Modified Version under the terms of this
+License, in the form shown in the Addendum below.
+
+G. Preserve in that license notice the full lists of Invariant Sections and
+required Cover Texts given in the Document's license notice.
+
+H. Include an unaltered copy of this License.
+
+I. Preserve the section Entitled "History", Preserve its Title, and add to it
+an item stating at least the title, year, new authors, and publisher of the
+Modified Version as given on the Title Page. If there is no section Entitled
+"History" in the Document, create one stating the title, year, authors, and
+publisher of the Document as given on its Title Page, then add an item
+describing the Modified Version as stated in the previous sentence.
+
+J. Preserve the network location, if any, given in the Document for public
+access to a Transparent copy of the Document, and likewise the network
+locations given in the Document for previous versions it was based on. These
+may be placed in the "History" section. You may omit a network location for a
+work that was published at least four years before the Document itself, or if
+the original publisher of the version it refers to gives permission.
+
+K. For any section Entitled "Acknowledgements" or "Dedications", Preserve the
+Title of the section, and preserve in the section all the substance and tone of
+each of the contributor acknowledgements and/or dedications given therein.
+
+L. Preserve all the Invariant Sections of the Document, unaltered in their text
+and in their titles. Section numbers or the equivalent are not considered part
+of the section titles.
+
+M. Delete any section Entitled "Endorsements". Such a section may not be
+included in the Modified Version.
+
+N. Do not retitle any existing section to be Entitled "Endorsements" or to
+conflict in title with any Invariant Section.
+
+O. Preserve any Warranty Disclaimers.
+
+If the Modified Version includes new front-matter sections or appendices that
+qualify as Secondary Sections and contain no material copied from the Document,
+you may at your option designate some or all of these sections as invariant. To
+do this, add their titles to the list of Invariant Sections in the Modified
+Version's license notice. These titles must be distinct from any other section
+titles.
+
+You may add a section Entitled "Endorsements", provided it contains nothing but
+endorsements of your Modified Version by various parties—for example,
+statements of peer review or that the text has been approved by an organization
+as the authoritative definition of a standard.
+
+You may add a passage of up to five words as a Front-Cover Text, and a passage
+of up to 25 words as a Back-Cover Text, to the end of the list of Cover Texts
+in the Modified Version. Only one passage of Front-Cover Text and one of
+Back-Cover Text may be added by (or through arrangements made by) any one
+entity. If the Document already includes a cover text for the same cover,
+previously added by you or by arrangement made by the same entity you are
+acting on behalf of, you may not add another; but you may replace the old one,
+on explicit permission from the previous publisher that added the old one.
+
+The author(s) and publisher(s) of the Document do not by this License give
+permission to use their names for publicity for or to assert or imply
+endorsement of any Modified Version.
+
+=== 5. COMBINING DOCUMENTS
+You may combine the Document with other documents released under this License,
+under the terms defined in section 4 above for modified versions, provided that
+you include in the combination all of the Invariant Sections of all of the
+original documents, unmodified, and list them all as Invariant Sections of your
+combined work in its license notice, and that you preserve all their Warranty
+Disclaimers.
+
+The combined work need only contain one copy of this License, and multiple
+identical Invariant Sections may be replaced with a single copy. If there are
+multiple Invariant Sections with the same name but different contents, make the
+title of each such section unique by adding at the end of it, in parentheses,
+the name of the original author or publisher of that section if known, or else
+a unique number. Make the same adjustment to the section titles in the list of
+Invariant Sections in the license notice of the combined work.
+
+In the combination, you must combine any sections Entitled "History" in the
+various original documents, forming one section Entitled "History"; likewise
+combine any sections Entitled "Acknowledgements", and any sections Entitled
+"Dedications". You must delete all sections Entitled "Endorsements".
+
+=== 6. COLLECTIONS OF DOCUMENTS
+You may make a collection consisting of the Document and other documents
+released under this License, and replace the individual copies of this License
+in the various documents with a single copy that is included in the collection,
+provided that you follow the rules of this License for verbatim copying of each
+of the documents in all other respects.
+
+You may extract a single document from such a collection, and distribute it
+individually under this License, provided you insert a copy of this License
+into the extracted document, and follow this License in all other respects
+regarding verbatim copying of that document.
+
+=== 7. AGGREGATION WITH INDEPENDENT WORKS
+A compilation of the Document or its derivatives with other separate and
+independent documents or works, in or on a volume of a storage or distribution
+medium, is called an "aggregate" if the copyright resulting from the
+compilation is not used to limit the legal rights of the compilation's users
+beyond what the individual works permit. When the Document is included in an
+aggregate, this License does not apply to the other works in the aggregate
+which are not themselves derivative works of the Document.
+
+If the Cover Text requirement of section 3 is applicable to these copies of the
+Document, then if the Document is less than one half of the entire aggregate,
+the Document's Cover Texts may be placed on covers that bracket the Document
+within the aggregate, or the electronic equivalent of covers if the Document is
+in electronic form. Otherwise they must appear on printed covers that bracket
+the whole aggregate.
+
+=== 8. TRANSLATION
+Translation is considered a kind of modification, so you may distribute
+translations of the Document under the terms of section 4. Replacing Invariant
+Sections with translations requires special permission from their copyright
+holders, but you may include translations of some or all Invariant Sections in
+addition to the original versions of these Invariant Sections. You may include
+a translation of this License, and all the license notices in the Document, and
+any Warranty Disclaimers, provided that you also include the original English
+version of this License and the original versions of those notices and
+disclaimers. In case of a disagreement between the translation and the original
+version of this License or a notice or disclaimer, the original version will
+prevail.
+
+If a section in the Document is Entitled "Acknowledgements", "Dedications", or
+"History", the requirement (section 4) to Preserve its Title (section 1) will
+typically require changing the actual title.
+
+=== 9. TERMINATION
+You may not copy, modify, sublicense, or distribute the Document except as
+expressly provided under this License. Any attempt otherwise to copy, modify,
+sublicense, or distribute it is void, and will automatically terminate your
+rights under this License.
+
+However, if you cease all violation of this License, then your license from a
+particular copyright holder is reinstated (a) provisionally, unless and until
+the copyright holder explicitly and finally terminates your license, and (b)
+permanently, if the copyright holder fails to notify you of the violation by
+some reasonable means prior to 60 days after the cessation.
+
+Moreover, your license from a particular copyright holder is reinstated
+permanently if the copyright holder notifies you of the violation by some
+reasonable means, this is the first time you have received notice of violation
+of this License (for any work) from that copyright holder, and you cure the
+violation prior to 30 days after your receipt of the notice.
+
+Termination of your rights under this section does not terminate the licenses
+of parties who have received copies or rights from you under this License. If
+your rights have been terminated and not permanently reinstated, receipt of a
+copy of some or all of the same material does not give you any rights to use it.
+
+=== 10. FUTURE REVISIONS OF THIS LICENSE
+The Free Software Foundation may publish new, revised versions of the GNU Free
+Documentation License from time to time. Such new versions will be similar in
+spirit to the present version, but may differ in detail to address new problems
+or concerns. See http://www.gnu.org/copyleft/.
+
+Each version of the License is given a distinguishing version number. If the
+Document specifies that a particular numbered version of this License "or any
+later version" applies to it, you have the option of following the terms and
+conditions either of that specified version or of any later version that has
+been published (not as a draft) by the Free Software Foundation. If the
+Document does not specify a version number of this License, you may choose any
+version ever published (not as a draft) by the Free Software Foundation. If the
+Document specifies that a proxy can decide which future versions of this
+License can be used, that proxy's public statement of acceptance of a version
+permanently authorizes you to choose that version for the Document.
+
+=== 11. RELICENSING
+"Massive Multiauthor Collaboration Site" (or "MMC Site") means any World Wide
+Web server that publishes copyrightable works and also provides prominent
+facilities for anybody to edit those works. A public wiki that anybody can edit
+is an example of such a server. A "Massive Multiauthor Collaboration" (or
+"MMC") contained in the site means any set of copyrightable works thus
+published on the MMC site.
+
+"CC-BY-SA" means the Creative Commons Attribution-Share Alike 3.0 license
+published by Creative Commons Corporation, a not-for-profit corporation with a
+principal place of business in San Francisco, California, as well as future
+copyleft versions of that license published by that same organization.
+
+"Incorporate" means to publish or republish a Document, in whole or in part, as
+part of another Document.
+
+An MMC is "eligible for relicensing" if it is licensed under this License, and
+if all works that were first published under this License somewhere other than
+this MMC, and subsequently incorporated in whole or in part into the MMC, (1)
+had no cover texts or invariant sections, and (2) were thus incorporated prior
+to November 1, 2008.
+
+The operator of an MMC Site may republish an MMC contained in the site under
+CC-BY-SA on the same site at any time before August 1, 2009, provided the MMC
+is eligible for relicensing.
+
