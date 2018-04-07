@@ -1,0 +1,24 @@
+			ANNOUNCING AFFLIB 3.7.5
+			Oct 11, 2014
+
+AFFLIB is no longer being maintained by Simson Garfinkel.
+- See https://github.com/simsong/AFFLIBv3/issues/16 for details.
+
+My name is Phillip Hellewell.  To keep AFFLIB alive I created a fork
+at https://github.com/sshock/AFFLIBv3 that I am maintaining while I can.
+
+Version 3.7.5 includes a few minor fixes and additions:
+
+* Support .iso extension as a raw file.
+
+* Fixed several typos.
+
+* Add man pages written by Joao Eriberto Mota Filho.
+
+* Cleanup to makefile and configure scripts.
+
+* Fix build issue with hurd-i386.
+
+* Show a valid error message when attempting to mount E01 images
+  (note: EWF support was removed in 2010).
+
