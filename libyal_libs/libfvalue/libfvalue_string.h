@@ -1,7 +1,7 @@
 /*
  * String value functions
  *
- * Copyright (C) 2010-2017, Joachim Metz <joachim.metz@gmail.com>
+ * Copyright (C) 2010-2018, Joachim Metz <joachim.metz@gmail.com>
  *
  * Refer to AUTHORS for acknowledgements.
  *
@@ -161,5 +161,5 @@ int libfvalue_utf16_string_split(
 }
 #endif
 
-#endif
+#endif /* !defined( _LIBVALUE_STRING_H ) */
 

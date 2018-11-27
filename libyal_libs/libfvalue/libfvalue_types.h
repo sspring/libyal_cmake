@@ -1,7 +1,7 @@
 /*
  * The internal type definitions
  *
- * Copyright (C) 2010-2017, Joachim Metz <joachim.metz@gmail.com>
+ * Copyright (C) 2010-2018, Joachim Metz <joachim.metz@gmail.com>
  *
  * Refer to AUTHORS for acknowledgements.
  *
@@ -35,15 +35,15 @@
  */
 #if defined( HAVE_DEBUG_OUTPUT ) && !defined( WINAPI )
 typedef struct libfvalue_data_handle {}		libfvalue_data_handle_t;
-typedef struct libfvalue_split_utf8_string {}	libfvalue_split_utf8_string_t;
 typedef struct libfvalue_split_utf16_string {}	libfvalue_split_utf16_string_t;
+typedef struct libfvalue_split_utf8_string {}	libfvalue_split_utf8_string_t;
 typedef struct libfvalue_table {}		libfvalue_table_t;
 typedef struct libfvalue_value {}		libfvalue_value_t;
 
 #else
 typedef intptr_t libfvalue_data_handle_t;
-typedef intptr_t libfvalue_split_utf8_string_t;
 typedef intptr_t libfvalue_split_utf16_string_t;
+typedef intptr_t libfvalue_split_utf8_string_t;
 typedef intptr_t libfvalue_table_t;
 typedef intptr_t libfvalue_value_t;
 

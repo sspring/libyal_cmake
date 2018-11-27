@@ -14,7 +14,7 @@ set(py_name "py${py_name}")   # preffix py
 if( NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
-set(libyal_sublibs_define -DHAVE_WIDE_CHARACTER_TYPE -DHAVE_LOCAL_LIBCERROR 
+set(libyal_sublibs_define -DHAVE_WIDE_CHARACTER_TYPE -DHAVE_LOCAL_LIBFDATETIME -DHAVE_LOCAL_LIBCERROR 
                 -DHAVE_LOCAL_LIBCTHREADS -DHAVE_LOCAL_LIBCDATA -DHAVE_LOCAL_LIBCLOCALE 
                 -DHAVE_LOCAL_LIBCNOTIFY -DHAVE_LOCAL_LIBCSPLIT -DHAVE_LOCAL_LIBUNA 
                 -DHAVE_LOCAL_LIBCFILE -DHAVE_LOCAL_LIBCPATH -DHAVE_LOCAL_LIBBFIO 
@@ -41,12 +41,17 @@ else()
 endif()
 set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME ${PROJECT_NAME})
 target_link_libraries(${PROJECT_NAME} zlib bz2)
-set(libyal_sublibs   libcfile libcerror libcnotify  libclocale libuna libbfio libfguid libfvalue  libcaes libcdata  libcpath libcsplit libcthreads  libfcache libfdata libhmac )
+set(libyal_sublibs   libcfile libcerror libcnotify  libclocale libuna libbfio libfguid libfvalue  libcaes libcdata  libcpath libcsplit libcthreads  libfcache libfdata libhmac libfdatetime)
 if("${proj_name_lower}" STREQUAL "libfvde")
 	list(APPEND libyal_sublibs libfplist)
 	list(APPEND libyal_sublibs_define -DHAVE_LOCAL_LIBFPLIST)
 endif()
 
+if("${proj_name_lower}" STREQUAL "libbde")
+    target_compile_definitions(libbde PRIVATE -DHAVE_LIBBFIO -DLIBBDE_DLL_EXPORT)
+endif()
+
+include_directories("${PROJECT_NAME}/../libyal_libs")
 foreach(sub_lib ${libyal_sublibs})
     include_directories("${PROJECT_NAME}/../libyal_libs/${sub_lib}")
     file(GLOB sublib_sources "${PROJECT_NAME}/../libyal_libs/${sub_lib}/*.c")

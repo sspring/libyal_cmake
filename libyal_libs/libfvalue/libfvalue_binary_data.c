@@ -1,7 +1,7 @@
 /*
  * Binary data value functions
  *
- * Copyright (C) 2010-2017, Joachim Metz <joachim.metz@gmail.com>
+ * Copyright (C) 2010-2018, Joachim Metz <joachim.metz@gmail.com>
  *
  * Refer to AUTHORS for acknowledgements.
  *
@@ -233,6 +233,34 @@ int libfvalue_binary_data_copy_from_byte_stream(
 		 function );
 
 		return( -1 );
+	}
+	if( byte_stream == NULL )
+	{
+		if( byte_stream_size != 0 )
+		{
+			libcerror_error_set(
+			 error,
+			 LIBCERROR_ERROR_DOMAIN_ARGUMENTS,
+			 LIBCERROR_ARGUMENT_ERROR_VALUE_OUT_OF_BOUNDS,
+			 "%s: invalid byte stream size value out of bounds.",
+			 function );
+
+			return( -1 );
+		}
+	}
+	else
+	{
+		if( byte_stream_size > (size_t) SSIZE_MAX )
+		{
+			libcerror_error_set(
+			 error,
+			 LIBCERROR_ERROR_DOMAIN_ARGUMENTS,
+			 LIBCERROR_ARGUMENT_ERROR_VALUE_EXCEEDS_MAXIMUM,
+			 "%s: invalid byte stream size value exceeds maximum.",
+			 function );
+
+			return( -1 );
+		}
 	}
 	if( encoding != 0 )
 	{
