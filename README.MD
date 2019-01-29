@@ -1,5 +1,5 @@
 status of all supported libs: 
-libewf(20171104)  libfvde(20180108)  libvhdi(20180403)  libvmdk(20180403)
+libewf(20171104)  libfvde(20180108)  libvhdi(20180403)  libvmdk(20180403) libbde(20181124)
 
 Build Instruction:(we also try to find python libs to build pymodule)
 1. git clone https://github.com/sspring/libyal_cmake.git 
