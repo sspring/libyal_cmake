@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.9)
-project(libewf C)
+project(libvshadow C)
 
 string(TOLOWER "${PROJECT_NAME}" proj_name_lower)
 SET (CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
@@ -48,7 +48,9 @@ if("${proj_name_lower}" STREQUAL "libfvde")
 endif()
 
 if("${proj_name_lower}" STREQUAL "libbde")
-    target_compile_definitions(libbde PRIVATE -DHAVE_LIBBFIO -DLIBBDE_DLL_EXPORT)
+    add_definitions(-DHAVE_LIBBFIO -DLIBBDE_DLL_EXPORT)
+elseif("${proj_name_lower}" STREQUAL "libvshadow")
+    add_definitions(-DLIBVSHADOW_DLL_EXPORT)
 endif()
 
 include_directories("${PROJECT_NAME}/../libyal_libs")
