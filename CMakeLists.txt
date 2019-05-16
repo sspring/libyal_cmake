@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.9)
-project(libvshadow C)
+project(libewf C)
 
 string(TOLOWER "${PROJECT_NAME}" proj_name_lower)
 SET (CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
@@ -19,7 +19,7 @@ set(libyal_sublibs_define -DHAVE_WIDE_CHARACTER_TYPE -DHAVE_LOCAL_LIBFDATETIME -
                 -DHAVE_LOCAL_LIBCNOTIFY -DHAVE_LOCAL_LIBCSPLIT -DHAVE_LOCAL_LIBUNA 
                 -DHAVE_LOCAL_LIBCFILE -DHAVE_LOCAL_LIBCPATH -DHAVE_LOCAL_LIBBFIO 
                 -DHAVE_LOCAL_LIBFCACHE -DHAVE_LOCAL_LIBFDATA -DHAVE_LOCAL_LIBFGUID 
-                -DHAVE_LOCAL_LIBFVALUE -DHAVE_LOCAL_LIBHMAC -DHAVE_LOCAL_LIBCAES)
+                -DHAVE_LOCAL_LIBFVALUE -DHAVE_LOCAL_LIBHMAC -DHAVE_LOCAL_LIBCAES -DHAVE_LOCAL_LIBFWNT)
 set(third_part_definitions -DHAVE_ZLIB -DHAVE_ZLIB_COMPRESS2 -DHAVE_MULTI_THREAD_SUPPORT)
 
 if(MSVC)
@@ -41,7 +41,7 @@ else()
 endif()
 set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME ${PROJECT_NAME})
 target_link_libraries(${PROJECT_NAME} zlib bz2)
-set(libyal_sublibs   libcfile libcerror libcnotify  libclocale libuna libbfio libfguid libfvalue  libcaes libcdata  libcpath libcsplit libcthreads  libfcache libfdata libhmac libfdatetime)
+set(libyal_sublibs   libcfile libcerror libcnotify  libclocale libuna libbfio libfguid libfvalue  libcaes libcdata  libcpath libcsplit libcthreads  libfcache libfdata libhmac libfdatetime libfwnt)
 if("${proj_name_lower}" STREQUAL "libfvde")
 	list(APPEND libyal_sublibs libfplist)
 	list(APPEND libyal_sublibs_define -DHAVE_LOCAL_LIBFPLIST)
@@ -51,6 +51,8 @@ if("${proj_name_lower}" STREQUAL "libbde")
     add_definitions(-DHAVE_LIBBFIO -DLIBBDE_DLL_EXPORT)
 elseif("${proj_name_lower}" STREQUAL "libvshadow")
     add_definitions(-DLIBVSHADOW_DLL_EXPORT)
+elseif("${proj_name_lower}" STREQUAL "libregf")
+    add_definitions(-DLIBREGF_DLL_EXPORT)
 endif()
 
 include_directories("${PROJECT_NAME}/../libyal_libs")
