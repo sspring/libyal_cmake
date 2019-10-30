@@ -1,7 +1,7 @@
 /*
  * The list functions
  *
- * Copyright (C) 2010-2017, Joachim Metz <joachim.metz@gmail.com>
+ * Copyright (C) 2010-2018, Joachim Metz <joachim.metz@gmail.com>
  *
  * Refer to AUTHORS for acknowledgements.
  *
@@ -58,7 +58,7 @@ int libfdata_list_initialize(
             intptr_t *data_handle,
             intptr_t *file_io_handle,
             libfdata_list_element_t *list_element,
-            libfcache_cache_t *cache,
+            libfdata_cache_t *cache,
             int element_data_file_index,
             off64_t element_data_offset,
             size64_t element_data_size,
@@ -69,7 +69,7 @@ int libfdata_list_initialize(
             intptr_t *data_handle,
             intptr_t *file_io_handle,
             libfdata_list_element_t *list_element,
-            libfcache_cache_t *cache,
+            libfdata_cache_t *cache,
             int element_data_file_index,
             off64_t element_data_offset,
             size64_t element_data_size,
@@ -404,6 +404,7 @@ int libfdata_list_clone(
 			goto on_error;
 		}
 	}
+/* TODO set destination list in destination elements */
 	if( libcdata_array_clone(
 	     &( internal_destination_list->elements_array ),
 	     internal_source_list->elements_array,
@@ -3588,13 +3589,13 @@ int libfdata_list_get_element_at_offset(
  */
 int libfdata_list_cache_element_value(
      libfdata_list_t *list,
-     libfcache_cache_t *cache,
+     libfdata_cache_t *cache,
      int element_index,
      int element_file_index,
      off64_t element_offset,
      size64_t element_size,
      uint32_t element_flags,
-     time_t element_timestamp,
+     int64_t element_timestamp,
      intptr_t *element_value,
      int (*free_element_value)(
             intptr_t **element_value,
@@ -3632,7 +3633,7 @@ int libfdata_list_cache_element_value(
 		return( -1 );
 	}
 	if( libfcache_cache_get_number_of_entries(
-	     cache,
+	     (libfcache_cache_t *) cache,
 	     &number_of_cache_entries,
 	     error ) != 1 )
 	{
@@ -3671,7 +3672,7 @@ int libfdata_list_cache_element_value(
 		                     number_of_cache_entries );
 	}
 	if( libfcache_cache_set_value_by_index(
-	     cache,
+	     (libfcache_cache_t *) cache,
 	     cache_entry_index,
 	     element_file_index,
 	     element_offset,
@@ -3700,7 +3701,7 @@ int libfdata_list_cache_element_value(
 int libfdata_list_get_element_value(
      libfdata_list_t *list,
      intptr_t *file_io_handle,
-     libfcache_cache_t *cache,
+     libfdata_cache_t *cache,
      libfdata_list_element_t *element,
      intptr_t **element_value,
      uint8_t read_flags,
@@ -3709,11 +3710,11 @@ int libfdata_list_get_element_value(
 	libfcache_cache_value_t *cache_value    = NULL;
 	libfdata_internal_list_t *internal_list = NULL;
 	static char *function                   = "libfdata_list_get_element_value";
+	size64_t element_size                   = 0;
         off64_t cache_value_offset              = (off64_t) -1;
 	off64_t element_offset                  = 0;
-	size64_t element_size                   = 0;
-	time_t cache_value_timestamp            = 0;
-	time_t element_timestamp                = 0;
+	int64_t cache_value_timestamp           = 0;
+	int64_t element_timestamp               = 0;
 	uint32_t element_flags                  = 0;
 	int cache_entry_index                   = -1;
 	int cache_value_file_index              = -1;
@@ -3764,7 +3765,7 @@ int libfdata_list_get_element_value(
 		return( -1 );
 	}
 	if( libfcache_cache_get_number_of_entries(
-	     cache,
+	     (libfcache_cache_t *) cache,
 	     &number_of_cache_entries,
 	     error ) != 1 )
 	{
@@ -3819,7 +3820,7 @@ int libfdata_list_get_element_value(
 			                     number_of_cache_entries );
 		}
 		if( libfcache_cache_get_value_by_index(
-		     cache,
+		     (libfcache_cache_t *) cache,
 		     cache_entry_index,
 		     &cache_value,
 		     error ) != 1 )
@@ -3947,7 +3948,7 @@ int libfdata_list_get_element_value(
 			                     number_of_cache_entries );
 		}
 		if( libfcache_cache_get_value_by_index(
-		     cache,
+		     (libfcache_cache_t *) cache,
 		     cache_entry_index,
 		     &cache_value,
 		     error ) != 1 )
@@ -4032,7 +4033,7 @@ int libfdata_list_get_element_value(
 int libfdata_list_get_element_value_by_index(
      libfdata_list_t *list,
      intptr_t *file_io_handle,
-     libfcache_cache_t *cache,
+     libfdata_cache_t *cache,
      int element_index,
      intptr_t **element_value,
      uint8_t read_flags,
@@ -4100,7 +4101,7 @@ int libfdata_list_get_element_value_by_index(
 int libfdata_list_get_element_value_at_offset(
      libfdata_list_t *list,
      intptr_t *file_io_handle,
-     libfcache_cache_t *cache,
+     libfdata_cache_t *cache,
      off64_t offset,
      int *element_index,
      off64_t *element_data_offset,
@@ -4179,7 +4180,7 @@ int libfdata_list_get_element_value_at_offset(
 int libfdata_list_set_element_value(
      libfdata_list_t *list,
      intptr_t *file_io_handle LIBFDATA_ATTRIBUTE_UNUSED,
-     libfcache_cache_t *cache,
+     libfdata_cache_t *cache,
      libfdata_list_element_t *element,
      intptr_t *element_value,
      int (*free_element_value)(
@@ -4188,13 +4189,13 @@ int libfdata_list_set_element_value(
      uint8_t write_flags,
      libcerror_error_t **error )
 {
-	static char *function    = "libfdata_list_set_element_value";
-	off64_t element_offset   = 0;
-	size64_t element_size    = 0;
-	time_t element_timestamp = 0;
-	uint32_t element_flags   = 0;
-	int element_file_index   = -1;
-	int element_index        = -1;
+	static char *function     = "libfdata_list_set_element_value";
+	size64_t element_size     = 0;
+	off64_t element_offset    = 0;
+	int64_t element_timestamp = 0;
+	uint32_t element_flags    = 0;
+	int element_file_index    = -1;
+	int element_index         = -1;
 
 	LIBFDATA_UNREFERENCED_PARAMETER( file_io_handle )
 
@@ -4280,7 +4281,7 @@ int libfdata_list_set_element_value(
 int libfdata_list_set_element_value_by_index(
      libfdata_list_t *list,
      intptr_t *file_io_handle,
-     libfcache_cache_t *cache,
+     libfdata_cache_t *cache,
      int element_index,
      intptr_t *element_value,
      int (*free_element_value)(
@@ -4357,7 +4358,7 @@ int libfdata_list_set_element_value_by_index(
 int libfdata_list_set_element_value_at_offset(
      libfdata_list_t *list,
      intptr_t *file_io_handle,
-     libfcache_cache_t *cache,
+     libfdata_cache_t *cache,
      off64_t offset,
      intptr_t *element_value,
      int (*free_element_value)(

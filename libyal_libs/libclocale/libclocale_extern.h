@@ -1,7 +1,7 @@
 /*
  * The internal extern definition
  *
- * Copyright (C) 2010-2017, Joachim Metz <joachim.metz@gmail.com>
+ * Copyright (C) 2010-2018, Joachim Metz <joachim.metz@gmail.com>
  *
  * Refer to AUTHORS for acknowledgements.
  *
@@ -37,8 +37,11 @@
 
 #include <libclocale/extern.h>
 
+#define LIBCLOCALE_EXTERN_VARIABLE	LIBCLOCALE_EXTERN
+
 #else
-#define LIBCLOCALE_EXTERN	/* extern */
+#define LIBCLOCALE_EXTERN		/* extern */
+#define LIBCLOCALE_EXTERN_VARIABLE	extern
 
 #endif /* !defined( HAVE_LOCAL_LIBCLOCALE ) */
 

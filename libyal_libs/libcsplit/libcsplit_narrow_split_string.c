@@ -1,7 +1,7 @@
 /*
  * Split narrow string functions
  *
- * Copyright (C) 2008-2017, Joachim Metz <joachim.metz@gmail.com>
+ * Copyright (C) 2008-2018, Joachim Metz <joachim.metz@gmail.com>
  *
  * Refer to AUTHORS for acknowledgements.
  *
@@ -514,7 +514,7 @@ int libcsplit_narrow_split_string_set_segment_by_index(
 		}
 		string_segment_offset = (size_t) ( string_segment - internal_split_string->string );
 
-		if( string_segment_offset > internal_split_string->string_size )
+		if( string_segment_offset >= internal_split_string->string_size )
 		{
 			libcerror_error_set(
 			 error,

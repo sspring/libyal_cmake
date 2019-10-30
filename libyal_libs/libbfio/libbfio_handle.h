@@ -1,7 +1,7 @@
 /*
  * The handle functions
  *
- * Copyright (C) 2009-2017, Joachim Metz <joachim.metz@gmail.com>
+ * Copyright (C) 2009-2018, Joachim Metz <joachim.metz@gmail.com>
  *
  * Refer to AUTHORS for acknowledgements.
  *
@@ -284,15 +284,15 @@ int libbfio_handle_set_access_flags(
      libcerror_error_t **error );
 
 LIBBFIO_EXTERN \
-int libbfio_handle_get_size(
-     libbfio_handle_t *handle,
-     size64_t *size,
-     libcerror_error_t **error );
-
-LIBBFIO_EXTERN \
 int libbfio_handle_get_offset(
      libbfio_handle_t *handle,
      off64_t *offset,
+     libcerror_error_t **error );
+
+LIBBFIO_EXTERN \
+int libbfio_handle_get_size(
+     libbfio_handle_t *handle,
+     size64_t *size,
      libcerror_error_t **error );
 
 LIBBFIO_EXTERN \

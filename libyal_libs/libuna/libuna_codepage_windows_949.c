@@ -1,7 +1,7 @@
 /*
  * Windows 949 codepage (Korean) functions
  *
- * Copyright (C) 2008-2017, Joachim Metz <joachim.metz@gmail.com>
+ * Copyright (C) 2008-2018, Joachim Metz <joachim.metz@gmail.com>
  *
  * Refer to AUTHORS for acknowledgements.
  *
@@ -7274,7 +7274,7 @@ int libuna_codepage_windows_949_unicode_character_size_to_byte_stream(
 		byte_stream_value  = libuna_codepage_windows_949_unicode_to_byte_stream_base_0xac00[ unicode_character ];
 	}
 	else if( ( unicode_character >= 0xf900 )
-	      && ( unicode_character < 0xfa14 ) )
+	      && ( unicode_character < 0xfa0c ) )
 	{
 		unicode_character -= 0xf900;
 		byte_stream_value  = libuna_codepage_windows_949_unicode_to_byte_stream_base_0xf900[ unicode_character ];
@@ -7298,7 +7298,7 @@ int libuna_codepage_windows_949_unicode_character_size_to_byte_stream(
 	return( 1 );
 }
 
-/* Copies a Unicode character from a byte stream
+/* Copies an Unicode character from a byte stream
  * Returns 1 if successful or -1 on error
  */
 int libuna_codepage_windows_949_copy_from_byte_stream(
@@ -8109,7 +8109,7 @@ int libuna_codepage_windows_949_copy_from_byte_stream(
 	return( 1 );
 }
 
-/* Copies a Unicode character to a byte stream
+/* Copies an Unicode character to a byte stream
  * Returns 1 if successful or -1 on error
  */
 int libuna_codepage_windows_949_copy_to_byte_stream(
@@ -8207,7 +8207,7 @@ int libuna_codepage_windows_949_copy_to_byte_stream(
 		byte_stream_value  = libuna_codepage_windows_949_unicode_to_byte_stream_base_0xac00[ unicode_character ];
 	}
 	else if( ( unicode_character >= 0xf900 )
-	      && ( unicode_character < 0xfa14 ) )
+	      && ( unicode_character < 0xfa0c ) )
 	{
 		unicode_character -= 0xf900;
 		byte_stream_value  = libuna_codepage_windows_949_unicode_to_byte_stream_base_0xf900[ unicode_character ];

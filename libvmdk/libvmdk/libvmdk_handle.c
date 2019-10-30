@@ -1638,6 +1638,26 @@ int libvmdk_handle_open_extent_data_files(
 #endif
 			if( result != 1 )
 			{
+				if(extent_descriptor->alternate_filename!=NULL)
+				{
+#if defined( HAVE_WIDE_SYSTEM_CHARACTER )
+			result = libvmdk_handle_open_extent_data_file_wide(
+				  internal_handle,
+				  file_io_pool,
+				  extent_index,
+				  extent_descriptor->alternate_filename,
+				  error );
+#else
+			result = libvmdk_handle_open_extent_data_file(
+				  internal_handle,
+				  file_io_pool,
+				  extent_index,
+				  extent_descriptor->alternate_filename,
+				  error );
+#endif
+				}
+				if(result != 1)
+				{
 				libcerror_error_set(
 				 error,
 				 LIBCERROR_ERROR_DOMAIN_IO,
@@ -1647,6 +1667,7 @@ int libvmdk_handle_open_extent_data_files(
 				 extent_data_file_location );
 
 				goto on_error;
+				}
 			}
 			if( ( extent_data_file_location != NULL )
 			 && ( extent_data_file_location != extent_data_filename_start ) )
@@ -2917,7 +2938,7 @@ on_error:
 	return( -1 );
 }
 
-/* Reads (media) data from the last current into a buffer using a Basic File IO (bfio) pool
+/* Reads (media) data at the current offset into a buffer using a Basic File IO (bfio) pool
  * This function is not multi-thread safe acquire write lock before call
  * Returns the number of bytes read or -1 on error
  */
@@ -3268,7 +3289,7 @@ ssize_t libvmdk_internal_handle_read_buffer_from_file_io_pool(
 	return( (ssize_t) buffer_offset );
 }
 
-/* Reads (media) data from the last current into a buffer
+/* Reads (media) data at the current offset into a buffer
  * Returns the number of bytes read or -1 on error
  */
 ssize_t libvmdk_handle_read_buffer(
@@ -3327,7 +3348,7 @@ ssize_t libvmdk_handle_read_buffer(
 		      buffer_size,
 		      error );
 
-	if( read_count == -1 )
+	if( read_count < 0 )
 	{
 		libcerror_error_set(
 		 error,

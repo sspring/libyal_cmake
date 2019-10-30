@@ -1,7 +1,7 @@
 /*
  * The internal extern definition
  *
- * Copyright (C) 2008-2017, Joachim Metz <joachim.metz@gmail.com>
+ * Copyright (C) 2008-2018, Joachim Metz <joachim.metz@gmail.com>
  *
  * Refer to AUTHORS for acknowledgements.
  *
@@ -28,17 +28,13 @@
  */
 #if !defined( HAVE_LOCAL_LIBCERROR )
 
-/* If libtool DLL support is enabled set LIBCERROR_DLL_EXPORT
- * before including libcerror/extern.h
- */
-#if defined( _WIN32 ) && defined( DLL_EXPORT )
-#define LIBCERROR_DLL_EXPORT
-#endif
-
 #include <libcerror/extern.h>
 
+#define LIBCERROR_EXTERN_VARIABLE	LIBCERROR_EXTERN
+
 #else
-#define LIBCERROR_EXTERN	/* extern */
+#define LIBCERROR_EXTERN		/* extern */
+#define LIBCERROR_EXTERN_VARIABLE	extern
 
 #endif /* !defined( HAVE_LOCAL_LIBCERROR ) */
 

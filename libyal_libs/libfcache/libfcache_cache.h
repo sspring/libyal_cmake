@@ -1,7 +1,7 @@
 /*
  * The cache functions
  *
- * Copyright (C) 2010-2017, Joachim Metz <joachim.metz@gmail.com>
+ * Copyright (C) 2010-2018, Joachim Metz <joachim.metz@gmail.com>
  *
  * Refer to AUTHORS for acknowledgements.
  *
@@ -19,14 +19,13 @@
  * along with this software.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#if !defined( _LIBFCACHE_INTERNAL_CACHE_H )
-#define _LIBFCACHE_INTERNAL_CACHE_H
+#if !defined( _LIBFCACHE_CACHE_H )
+#define _LIBFCACHE_CACHE_H
 
 #include <common.h>
 #include <types.h>
 
 #include "libfcache_cache_value.h"
-#include "libfcache_date_time.h"
 #include "libfcache_extern.h"
 #include "libfcache_libcdata.h"
 #include "libfcache_libcerror.h"
@@ -40,9 +39,13 @@ typedef struct libfcache_internal_cache libfcache_internal_cache_t;
 
 struct libfcache_internal_cache
 {
-	/* The cache entries (array)
+	/* The cache entries array
 	 */
-	libcdata_array_t *entries;
+	libcdata_array_t *entries_array;
+
+	/* The cache entries list
+	 */
+	libcdata_list_t *entries_list;
 
 	/* The number of cache values
 	 */
@@ -89,8 +92,15 @@ int libfcache_cache_get_number_of_cache_values(
      int *number_of_values,
      libcerror_error_t **error );
 
-/* Cache value functions
- */
+LIBFCACHE_EXTERN \
+int libfcache_cache_get_value_by_identifier(
+     libfcache_cache_t *cache,
+     int file_index,
+     off64_t offset,
+     int64_t timestamp,
+     libfcache_cache_value_t **cache_value,
+     libcerror_error_t **error );
+
 LIBFCACHE_EXTERN \
 int libfcache_cache_get_value_by_index(
      libfcache_cache_t *cache,
@@ -99,14 +109,27 @@ int libfcache_cache_get_value_by_index(
      libcerror_error_t **error );
 
 LIBFCACHE_EXTERN \
+int libfcache_cache_set_value_by_identifier(
+     libfcache_cache_t *cache,
+     int file_index,
+     off64_t offset,
+     int64_t timestamp,
+     intptr_t *value,
+     int (*value_free_function)(
+            intptr_t **value,
+            libcerror_error_t **error ),
+     uint8_t flags,
+     libcerror_error_t **error );
+
+LIBFCACHE_EXTERN \
 int libfcache_cache_set_value_by_index(
      libfcache_cache_t *cache,
      int cache_entry_index,
      int file_index,
      off64_t offset,
-     time_t timestamp,
+     int64_t timestamp,
      intptr_t *value,
-     int (*free_value)(
+     int (*value_free_function)(
             intptr_t **value,
             libcerror_error_t **error ),
      uint8_t flags,
@@ -116,5 +139,5 @@ int libfcache_cache_set_value_by_index(
 }
 #endif
 
-#endif /* !defined( _LIBFCACHE_INTERNAL_CACHE_H ) */
+#endif /* !defined( _LIBFCACHE_CACHE_H ) */
 

@@ -1,7 +1,7 @@
 /*
  * The area functions
  *
- * Copyright (C) 2010-2017, Joachim Metz <joachim.metz@gmail.com>
+ * Copyright (C) 2010-2018, Joachim Metz <joachim.metz@gmail.com>
  *
  * Refer to AUTHORS for acknowledgements.
  *
@@ -55,9 +55,9 @@ struct libfdata_internal_area
 	 */
 	libcdata_array_t *mapped_ranges_array;
 
-	/* The time stamp
+	/* The timestamp
 	 */
-	time_t timestamp;
+	int64_t timestamp;
 
 	/* The flags
 	 */
@@ -96,7 +96,7 @@ struct libfdata_internal_area
 	       intptr_t *data_handle,
 	       intptr_t *file_io_handle,
 	       libfdata_area_t *area,
-	       libfcache_cache_t *cache,
+	       libfdata_cache_t *cache,
 	       off64_t element_value_offset,
 	       int element_data_file_index,
 	       off64_t element_data_offset,
@@ -111,7 +111,7 @@ struct libfdata_internal_area
 	       intptr_t *data_handle,
 	       intptr_t *file_io_handle,
 	       libfdata_area_t *area,
-	       libfcache_cache_t *cache,
+	       libfdata_cache_t *cache,
 	       off64_t element_value_offset,
 	       int element_data_file_index,
 	       off64_t element_data_offset,
@@ -137,7 +137,7 @@ int libfdata_area_initialize(
             intptr_t *data_handle,
             intptr_t *file_io_handle,
             libfdata_area_t *area,
-            libfcache_cache_t *cache,
+            libfdata_cache_t *cache,
             off64_t element_value_offset,
             int element_data_file_index,
             off64_t element_data_offset,
@@ -149,7 +149,7 @@ int libfdata_area_initialize(
             intptr_t *data_handle,
             intptr_t *file_io_handle,
             libfdata_area_t *area,
-            libfcache_cache_t *cache,
+            libfdata_cache_t *cache,
             off64_t element_value_offset,
             int element_data_file_index,
             off64_t element_data_offset,
@@ -243,7 +243,7 @@ LIBFDATA_EXTERN \
 int libfdata_area_get_element_value_at_offset(
      libfdata_area_t *area,
      intptr_t *file_io_handle,
-     libfcache_cache_t *cache,
+     libfdata_cache_t *cache,
      off64_t element_value_offset,
      intptr_t **element_value,
      uint8_t read_flags,
@@ -253,12 +253,12 @@ LIBFDATA_EXTERN \
 int libfdata_area_set_element_value_at_offset(
      libfdata_area_t *area,
      intptr_t *file_io_handle,
-     libfcache_cache_t *cache,
+     libfdata_cache_t *cache,
      off64_t element_value_offset,
      intptr_t *element_value,
      int (*free_element_value)(
             intptr_t **element_value,
-     libcerror_error_t **error ),
+            libcerror_error_t **error ),
      uint8_t write_flags,
      libcerror_error_t **error );
 

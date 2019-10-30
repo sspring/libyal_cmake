@@ -1,7 +1,7 @@
 /*
  * Array functions
  *
- * Copyright (C) 2006-2017, Joachim Metz <joachim.metz@gmail.com>
+ * Copyright (C) 2006-2018, Joachim Metz <joachim.metz@gmail.com>
  *
  * Refer to AUTHORS for acknowledgements.
  *
@@ -109,8 +109,14 @@ int libcdata_array_initialize(
 	}
 	/* Pre-allocate in blocks of 16 entries
 	 */
-	number_of_allocated_entries = ( number_of_entries & ~( 15 ) ) + 16;
-
+	if( number_of_entries >= (int) ( INT_MAX - 16 ) )
+	{
+		number_of_allocated_entries = INT_MAX;
+	}
+	else
+	{
+		number_of_allocated_entries = ( number_of_entries & ~( 15 ) ) + 16;
+	}
 #if SIZEOF_INT <= SIZEOF_SIZE_T
 	if( (size_t) number_of_allocated_entries > (size_t) ( SSIZE_MAX / sizeof( intptr_t * ) ) )
 #else
@@ -508,7 +514,6 @@ int libcdata_array_clone(
 	libcdata_internal_array_t *internal_source_array      = NULL;
 	static char *function                                 = "libcdata_array_clone";
 	int entry_iterator                                    = 0;
-	int result                                            = 1;
 
 	if( destination_array == NULL )
 	{
@@ -563,7 +568,7 @@ int libcdata_array_clone(
 	internal_source_array = (libcdata_internal_array_t *) source_array;
 
 	if( libcdata_array_initialize(
-	     destination_array,
+	     (libcdata_array_t **) &internal_destination_array,
 	     internal_source_array->number_of_entries,
 	     error ) != 1 )
 	{
@@ -574,9 +579,9 @@ int libcdata_array_clone(
 		 "%s: unable to create destination array.",
 		 function );
 
-		goto on_error;
+		return( -1 );
 	}
-	if( *destination_array == NULL )
+	if( internal_destination_array == NULL )
 	{
 		libcerror_error_set(
 		 error,
@@ -585,10 +590,8 @@ int libcdata_array_clone(
 		 "%s: missing destination array.",
 		 function );
 
-		goto on_error;
+		return( -1 );
 	}
-	internal_destination_array = (libcdata_internal_array_t *) *destination_array;
-
 #if defined( HAVE_MULTI_THREAD_SUPPORT ) && !defined( HAVE_LOCAL_LIBCDATA )
 	if( libcthreads_read_write_lock_grab_for_read(
 	     internal_source_array->read_write_lock,
@@ -601,7 +604,7 @@ int libcdata_array_clone(
 		 "%s: unable to grab read/write lock for reading.",
 		 function );
 
-		goto on_error;
+		return( -1 );
 	}
 #endif
 	if( internal_source_array->entries != NULL )
@@ -612,12 +615,10 @@ int libcdata_array_clone(
 		{
 			if( internal_source_array->entries[ entry_iterator ] != NULL )
 			{
-				result = entry_clone_function(
-				          &( internal_destination_array->entries[ entry_iterator ] ),
-				          internal_source_array->entries[ entry_iterator ],
-				          error );
-
-				if( result != 1 )
+				if( entry_clone_function(
+				     &( internal_destination_array->entries[ entry_iterator ] ),
+				     internal_source_array->entries[ entry_iterator ],
+				     error ) != 1 )
 				{
 					libcerror_error_set(
 					 error,
@@ -627,7 +628,7 @@ int libcdata_array_clone(
 					 function,
 					 entry_iterator );
 
-					break;
+					goto on_error;
 				}
 			}
 		}
@@ -644,20 +645,28 @@ int libcdata_array_clone(
 		 "%s: unable to release read/write lock for reading.",
 		 function );
 
-		goto on_error;
+		libcdata_array_free(
+		 (libcdata_array_t **) &internal_destination_array,
+		 entry_free_function,
+		 NULL );
+
+		return( -1 );
 	}
 #endif
-	if( result != 1 )
-	{
-		goto on_error;
-	}
+	*destination_array = (libcdata_array_t *) internal_destination_array;
+
 	return( 1 );
 
 on_error:
-	if( *destination_array != NULL )
+#if defined( HAVE_MULTI_THREAD_SUPPORT ) && !defined( HAVE_LOCAL_LIBCDATA )
+	libcthreads_read_write_lock_release_for_read(
+	 internal_source_array->read_write_lock,
+	 NULL );
+#endif
+	if( internal_destination_array != NULL )
 	{
 		libcdata_array_free(
-		 destination_array,
+		 (libcdata_array_t **) &internal_destination_array,
 		 entry_free_function,
 		 NULL );
 	}
@@ -709,8 +718,14 @@ int libcdata_internal_array_resize(
 	{
 		/* Pre-allocate in blocks of 16 entries
 		 */
-		number_of_allocated_entries = ( number_of_entries & ~( 15 ) ) + 16;
-
+		if( number_of_entries >= (int) ( INT_MAX - 16 ) )
+		{
+			number_of_allocated_entries = INT_MAX;
+		}
+		else
+		{
+			number_of_allocated_entries = ( number_of_entries & ~( 15 ) ) + 16;
+		}
 #if SIZEOF_INT <= SIZEOF_SIZE_T
 		if( (size_t) number_of_allocated_entries > (size_t) ( SSIZE_MAX / sizeof( intptr_t * ) ) )
 #else

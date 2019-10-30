@@ -1,7 +1,7 @@
 /*
  * Base16 stream functions
  *
- * Copyright (C) 2008-2017, Joachim Metz <joachim.metz@gmail.com>
+ * Copyright (C) 2008-2018, Joachim Metz <joachim.metz@gmail.com>
  *
  * Refer to AUTHORS for acknowledgements.
  *
@@ -32,6 +32,12 @@
 #if defined( __cplusplus )
 extern "C" {
 #endif
+
+int libuna_base16_character_copy_from_base16_stream(
+     uint32_t *base16_character,
+     const uint8_t *base16_stream,
+     uint32_t base16_variant,
+     libcerror_error_t **error );
 
 LIBUNA_EXTERN \
 int libuna_base16_stream_size_to_byte_stream(

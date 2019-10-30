@@ -32,7 +32,7 @@
 #define LIBVMDK_HAVE_MULTI_THREAD_SUPPORT	1
 #endif
 
-#if defined( HAVE_LIBBFIO ) || ( !defined( WINAPI ) && 0 )
+#if defined( HAVE_LIBBFIO ) || ( !defined( WINAPI ) && 1 )
 #define LIBVMDK_HAVE_BFIO			1
 #endif
 

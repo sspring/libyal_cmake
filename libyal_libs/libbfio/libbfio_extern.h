@@ -1,7 +1,7 @@
 /*
  * The internal extern definition
  *
- * Copyright (C) 2009-2017, Joachim Metz <joachim.metz@gmail.com>
+ * Copyright (C) 2009-2018, Joachim Metz <joachim.metz@gmail.com>
  *
  * Refer to AUTHORS for acknowledgements.
  *
@@ -28,17 +28,13 @@
  */
 #if !defined( HAVE_LOCAL_LIBBFIO )
 
-/* If libtool DLL support is enabled set LIBBFIO_DLL_EXPORT
- * before including libbfio/extern.h
- */
-#if defined( _WIN32 ) && defined( DLL_EXPORT )
-#define LIBBFIO_DLL_EXPORT
-#endif
-
 #include <libbfio/extern.h>
 
+#define LIBBFIO_EXTERN_VARIABLE	LIBBFIO_EXTERN
+
 #else
-#define LIBBFIO_EXTERN	/* extern */
+#define LIBBFIO_EXTERN		/* extern */
+#define LIBBFIO_EXTERN_VARIABLE	extern
 
 #endif /* !defined( HAVE_LOCAL_LIBBFIO ) */
 

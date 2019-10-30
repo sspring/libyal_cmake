@@ -1,7 +1,7 @@
 /*
  * Error functions
  *
- * Copyright (C) 2008-2017, Joachim Metz <joachim.metz@gmail.com>
+ * Copyright (C) 2008-2018, Joachim Metz <joachim.metz@gmail.com>
  *
  * Refer to AUTHORS for acknowledgements.
  *
@@ -34,9 +34,6 @@
 extern "C" {
 #endif
 
-#define LIBCERROR_MESSAGE_INCREMENT_SIZE	64
-#define LIBCERROR_MESSAGE_MAXIMUM_SIZE		4096
-
 typedef struct libcerror_internal_error libcerror_internal_error_t;
 
 struct libcerror_internal_error
@@ -63,9 +60,26 @@ struct libcerror_internal_error
 	size_t *sizes;
 };
 
+int libcerror_error_initialize(
+     libcerror_error_t **error,
+     int error_domain,
+     int error_code );
+
 LIBCERROR_EXTERN \
 void libcerror_error_free(
       libcerror_error_t **error );
+
+int libcerror_error_resize(
+     libcerror_internal_error_t *internal_error );
+
+#if defined( HAVE_WIDE_SYSTEM_CHARACTER )
+
+void libcerror_error_get_system_format_string(
+      const char *format_string,
+      size_t format_string_length,
+      system_character_t **system_format_string );
+
+#endif /* defined( HAVE_WIDE_SYSTEM_CHARACTER ) */
 
 LIBCERROR_EXTERN \
 void libcerror_error_set(

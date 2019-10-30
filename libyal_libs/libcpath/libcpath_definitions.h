@@ -1,7 +1,7 @@
 /*
  * The internal definitions
  *
- * Copyright (C) 2008-2017, Joachim Metz <joachim.metz@gmail.com>
+ * Copyright (C) 2008-2018, Joachim Metz <joachim.metz@gmail.com>
  *
  * Refer to AUTHORS for acknowledgements.
  *
@@ -35,11 +35,11 @@
  */
 #else
 
-#define LIBCPATH_VERSION			20170108
+#define LIBCPATH_VERSION			20180720
 
 /* The libcpath version string
  */
-#define LIBCPATH_VERSION_STRING			"20170108"
+#define LIBCPATH_VERSION_STRING			"20180720"
 
 #if defined( WINAPI )
 #define LIBCPATH_SEPARATOR			'\\'
@@ -51,5 +51,32 @@
 
 #endif /* !defined( HAVE_LOCAL_LIBCPATH ) */
 
-#endif
+#if defined( WINAPI )
+#define LIBCPATH_ESCAPE_CHARACTER		'^'
+
+#else
+#define LIBCPATH_ESCAPE_CHARACTER		'\\'
+
+#endif /* defined( WINAPI ) */
+
+#if defined( WINAPI )
+enum LIBCPATH_TYPES
+{
+	LIBCPATH_TYPE_ABSOLUTE,
+	LIBCPATH_TYPE_DEVICE,
+	LIBCPATH_TYPE_EXTENDED_LENGTH,
+	LIBCPATH_TYPE_RELATIVE,
+	LIBCPATH_TYPE_UNC
+};
+
+#else
+enum LIBCPATH_TYPES
+{
+	LIBCPATH_TYPE_ABSOLUTE,
+	LIBCPATH_TYPE_RELATIVE
+};
+
+#endif /* defined( WINAPI ) */
+
+#endif /* !defined( LIBCPATH_INTERNAL_DEFINITIONS_H ) */
 

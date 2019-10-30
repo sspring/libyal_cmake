@@ -24,11 +24,11 @@
 
 #include <libvmdk/types.h>
 
-#define LIBVMDK_VERSION				20180403
+#define LIBVMDK_VERSION				20181227
 
 /* The version string
  */
-#define LIBVMDK_VERSION_STRING			"20180403"
+#define LIBVMDK_VERSION_STRING			"20181227"
 
 /* The access flags definitions
  * bit 1        set to 1 for read access
@@ -62,7 +62,7 @@ enum LIBVMDK_FILE_TYPES
 
 /* The (virtual) disk types
  */
-enum LIBVMDK_DISK_TYPE
+enum LIBVMDK_DISK_TYPES
 {
 	LIBVMDK_DISK_TYPE_UNDEFINED,
 	LIBVMDK_DISK_TYPE_2GB_EXTENT_FLAT,

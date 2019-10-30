@@ -1,7 +1,7 @@
 /*
  * The list element functions
  *
- * Copyright (C) 2010-2017, Joachim Metz <joachim.metz@gmail.com>
+ * Copyright (C) 2010-2018, Joachim Metz <joachim.metz@gmail.com>
  *
  * Refer to AUTHORS for acknowledgements.
  *
@@ -55,9 +55,9 @@ struct libfdata_internal_list_element
 	 */
 	size64_t mapped_size;
 
-	/* The time stamp
+	/* The timestamp
 	 */
-	time_t timestamp;
+	int64_t timestamp;
 
 	/* The flags
 	 */
@@ -77,8 +77,6 @@ int libfdata_list_element_free(
 int libfdata_list_element_clone(
      libfdata_list_element_t **destination_element,
      libfdata_list_element_t *source_element,
-     libfdata_list_t *list,
-     int element_index,
      libcerror_error_t **error );
 
 int libfdata_list_element_get_element_index(
@@ -93,7 +91,7 @@ int libfdata_list_element_set_element_index(
 
 int libfdata_list_element_get_timestamp(
      libfdata_list_element_t *element,
-     time_t *timestamp,
+     int64_t *timestamp,
      libcerror_error_t **error );
 
 /* Data range functions
@@ -134,7 +132,7 @@ LIBFDATA_EXTERN \
 int libfdata_list_element_get_element_value(
      libfdata_list_element_t *element,
      intptr_t *file_io_handle,
-     libfcache_cache_t *cache,
+     libfdata_cache_t *cache,
      intptr_t **element_value,
      uint8_t read_flags,
      libcerror_error_t **error );
@@ -143,7 +141,7 @@ LIBFDATA_EXTERN \
 int libfdata_list_element_set_element_value(
      libfdata_list_element_t *element,
      intptr_t *file_io_handle,
-     libfcache_cache_t *cache,
+     libfdata_cache_t *cache,
      intptr_t *element_value,
      int (*free_element_value)(
             intptr_t **element_value,

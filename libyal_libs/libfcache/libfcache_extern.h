@@ -1,7 +1,7 @@
 /*
  * The internal extern definition
  *
- * Copyright (C) 2010-2017, Joachim Metz <joachim.metz@gmail.com>
+ * Copyright (C) 2010-2018, Joachim Metz <joachim.metz@gmail.com>
  *
  * Refer to AUTHORS for acknowledgements.
  *
@@ -28,17 +28,13 @@
  */
 #if !defined( HAVE_LOCAL_LIBFCACHE )
 
-/* If libtool DLL support is enabled set LIBFCACHE_DLL_EXPORT
- * before including libfcache/extern.h
- */
-#if defined( _WIN32 ) && defined( DLL_EXPORT )
-#define LIBFCACHE_DLL_EXPORT
-#endif
-
 #include <libfcache/extern.h>
 
+#define LIBFCACHE_EXTERN_VARIABLE	LIBFCACHE_EXTERN
+
 #else
-#define LIBFCACHE_EXTERN	/* extern */
+#define LIBFCACHE_EXTERN		/* extern */
+#define LIBFCACHE_EXTERN_VARIABLE	extern
 
 #endif /* !defined( HAVE_LOCAL_LIBFCACHE ) */
 

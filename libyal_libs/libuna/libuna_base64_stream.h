@@ -1,7 +1,7 @@
 /*
  * Base64 stream functions
  *
- * Copyright (C) 2008-2017, Joachim Metz <joachim.metz@gmail.com>
+ * Copyright (C) 2008-2018, Joachim Metz <joachim.metz@gmail.com>
  *
  * Refer to AUTHORS for acknowledgements.
  *
@@ -34,7 +34,7 @@ extern "C" {
 #endif
 
 int libuna_base64_character_copy_to_sixtet(
-     uint8_t base64_character,
+     uint32_t base64_character,
      uint8_t *base64_sixtet,
      uint32_t base64_variant,
      libcerror_error_t **error );

@@ -1,7 +1,7 @@
 /*
  * System functions
  *
- * Copyright (C) 2008-2017, Joachim Metz <joachim.metz@gmail.com>
+ * Copyright (C) 2008-2018, Joachim Metz <joachim.metz@gmail.com>
  *
  * Refer to AUTHORS for acknowledgements.
  *
@@ -42,9 +42,12 @@
 #error Missing headers stdarg.h and varargs.h
 #endif
 
+#include "libcerror_definitions.h"
 #include "libcerror_error.h"
 #include "libcerror_system.h"
 #include "libcerror_types.h"
+
+#if defined( WINAPI )
 
 /* The make language identifier macro for the WINAPI FormatMessage function
  */
@@ -61,10 +64,12 @@
 #define SUBLANG_DEFAULT		1
 #endif
 
+#endif /* defined( WINAPI ) */
+
 #if defined( WINAPI ) && ( WINVER <= 0x0500 )
 
 /* Cross Windows safe version of FormatMessageA
- * Returns TRUE if successful or FALSE on error
+ * Returns the number of printed characters without the end-of-string character or 0 on error
  */
 DWORD libcerror_FormatMessageA(
        DWORD flags,
@@ -77,18 +82,18 @@ DWORD libcerror_FormatMessageA(
 {
 	FARPROC function       = NULL;
 	HMODULE library_handle = NULL;
-	DWORD result           = 0;
+	DWORD print_count      = 0;
 
 	if( string == NULL )
 	{
-		return( FALSE );
+		return( 0 );
 	}
 	library_handle = LoadLibrary(
 	                  _SYSTEM_STRING( "kernel32.dll" ) );
 
 	if( library_handle == NULL )
 	{
-		return( FALSE );
+		return( 0 );
 	}
 	function = GetProcAddress(
 		    library_handle,
@@ -96,14 +101,14 @@ DWORD libcerror_FormatMessageA(
 
 	if( function != NULL )
 	{
-		result = function(
-			  flags,
-			  source,
-			  message_identifier,
-			  language_identifier,
-			  string,
-			  string_size,
-			  argument_list );
+		print_count = function(
+		               flags,
+		               source,
+		               message_identifier,
+		               language_identifier,
+		               string,
+		               string_size,
+		               argument_list );
 	}
 	/* This call should be after using the function
 	 * in most cases kernel32.dll will still be available after free
@@ -111,13 +116,13 @@ DWORD libcerror_FormatMessageA(
 	if( FreeLibrary(
 	     library_handle ) != TRUE )
 	{
-		result = FALSE;
+		print_count = 0;
 	}
-	return( result );
+	return( print_count );
 }
 
 /* Cross Windows safe version of FormatMessageW
- * Returns TRUE if successful or FALSE on error
+ * Returns the number of printed characters without the end-of-string character or 0 on error
  */
 DWORD libcerror_FormatMessageW(
        DWORD flags,
@@ -130,33 +135,33 @@ DWORD libcerror_FormatMessageW(
 {
 	FARPROC function       = NULL;
 	HMODULE library_handle = NULL;
-	DWORD result           = 0;
+	DWORD print_count      = 0;
 
 	if( string == NULL )
 	{
-		return( FALSE );
+		return( 0 );
 	}
 	library_handle = LoadLibrary(
 	                  _SYSTEM_STRING( "kernel32.dll" ) );
 
 	if( library_handle == NULL )
 	{
-		return( FALSE );
+		return( 0 );
 	}
 	function = GetProcAddress(
 		    library_handle,
-		    (LPCSTR) "FormatMessageA" );
+		    (LPCSTR) "FormatMessageW" );
 
 	if( function != NULL )
 	{
-		result = function(
-			  flags,
-			  source,
-			  message_identifier,
-			  language_identifier,
-			  string,
-			  string_size,
-			  argument_list );
+		print_count = function(
+		               flags,
+		               source,
+		               message_identifier,
+		               language_identifier,
+		               string,
+		               string_size,
+		               argument_list );
 	}
 	/* This call should be after using the function
 	 * in most cases kernel32.dll will still be available after free
@@ -164,14 +169,29 @@ DWORD libcerror_FormatMessageW(
 	if( FreeLibrary(
 	     library_handle ) != TRUE )
 	{
-		result = FALSE;
+		print_count = 0;
 	}
-	return( result );
+	return( print_count );
 }
 
+#endif /* defined( WINAPI ) && ( WINVER <= 0x0500 ) */
+
+#if defined( WINAPI )
+
+#if ( WINVER <= 0x0500 )
+#if defined( HAVE_WIDE_SYSTEM_CHARACTER )
+#define libcerror_system_FormatMessage libcerror_FormatMessageW
+#else
+#define libcerror_system_FormatMessage libcerror_FormatMessageA
 #endif
 
-#if defined( WINAPI ) && ( WINVER >= 0x0501 )
+#else
+#if defined( HAVE_WIDE_SYSTEM_CHARACTER )
+#define libcerror_system_FormatMessage FormatMessageW
+#else
+#define libcerror_system_FormatMessage FormatMessageA
+#endif
+#endif /* ( WINVER <= 0x0500 ) */
 
 /* Retrieves a descriptive string of the error number
  * This function uses the WINAPI functions for Windows XP or later
@@ -182,23 +202,18 @@ int libcerror_system_copy_string_from_error_number(
      size_t string_size,
      uint32_t error_number )
 {
-	DWORD flags       = 0;
 	DWORD print_count = 0;
 
 	if( string == NULL )
 	{
 		return( -1 );
 	}
-	flags = FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS;
-
 	if( string_size > (size_t) INT_MAX )
 	{
 		return( -1 );
 	}
-#if ( WINVER <= 0x0500 )
-#if defined( HAVE_WIDE_SYSTEM_CHARACTER )
-	print_count = libcerror_FormatMessageW(
-	               flags,
+	print_count = libcerror_system_FormatMessage(
+	               FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
 	               NULL,
 	               (DWORD) error_number,
 	               MAKELANGID(
@@ -207,44 +222,6 @@ int libcerror_system_copy_string_from_error_number(
 	               string,
 	               (DWORD) string_size,
 	               NULL );
-#else
-	print_count = libcerror_FormatMessageA(
-	               flags,
-	               NULL,
-	               (DWORD) error_number,
-	               MAKELANGID(
-	                LANG_NEUTRAL,
-	                SUBLANG_DEFAULT ),
-	               string,
-	               (DWORD) string_size,
-	               NULL );
-#endif
-#else
-#if defined( HAVE_WIDE_SYSTEM_CHARACTER )
-	print_count = FormatMessageW(
-	               flags,
-	               NULL,
-	               (DWORD) error_number,
-	               MAKELANGID(
-	                LANG_NEUTRAL,
-	                SUBLANG_DEFAULT ),
-	               string,
-	               (DWORD) string_size,
-	               NULL );
-#else
-	print_count = FormatMessageA(
-	               flags,
-	               NULL,
-	               (DWORD) error_number,
-	               MAKELANGID(
-	                LANG_NEUTRAL,
-	                SUBLANG_DEFAULT ),
-	               string,
-	               (DWORD) string_size,
-	               NULL );
-#endif
-#endif /* ( WINVER <= 0x0500 ) */
-
 
 	if( print_count == 0 )
 	{
@@ -254,6 +231,10 @@ int libcerror_system_copy_string_from_error_number(
 }
 
 #elif defined( HAVE_STRERROR_R )
+
+#if defined( HAVE_WIDE_SYSTEM_CHARACTER )
+#error Missing wide character strerror_r function
+#endif
 
 /* Retrieves a descriptive string of the error number
  * This function uses the POSIX strerror_r function or equivalent
@@ -274,12 +255,6 @@ int libcerror_system_copy_string_from_error_number(
 	{
 		return( -1 );
 	}
-/* Sanity check
- */
-#if defined( HAVE_WIDE_SYSTEM_CHARACTER )
-#error Missing wide character strerror_r function
-#endif
-
 #if defined( STRERROR_R_CHAR_P )
 	if( strerror_r(
 	     (int) error_number,
@@ -302,7 +277,11 @@ int libcerror_system_copy_string_from_error_number(
 	return( (int) string_length );
 }
 
-#elif defined( HAVE_STRERROR ) || defined( WINAPI )
+#elif defined( HAVE_STRERROR )
+
+#if defined( HAVE_WIDE_SYSTEM_CHARACTER )
+#error Missing wide character strerror function
+#endif
 
 /* Retrieves a descriptive string of the error number
  * This function uses the POSIX strerror function or equivalent
@@ -328,12 +307,6 @@ int libcerror_system_copy_string_from_error_number(
 	{
 		return( -1 );
 	}
-/* Sanity check
- */
-#if defined( HAVE_WIDE_SYSTEM_CHARACTER ) && !defined( WINAPI )
-#error Missing wide character strerror function
-#endif
-
 #if defined( HAVE_WIDE_SYSTEM_CHARACTER )
 	static_error_string = _wcserror(
 	                       (int) error_number );
@@ -399,10 +372,13 @@ void VARARGS(
 	va_list argument_list;
 
 	libcerror_internal_error_t *internal_error = NULL;
+	system_character_t *error_string           = NULL;
 	system_character_t *system_format_string   = NULL;
 	void *reallocation                         = NULL;
+	size_t error_string_size                   = 0;
 	size_t format_string_length                = 0;
-	size_t message_size                        = LIBCERROR_MESSAGE_INCREMENT_SIZE;
+	size_t message_size                        = 0;
+	size_t next_message_size                   = LIBCERROR_MESSAGE_INCREMENT_SIZE;
 	size_t string_index                        = 0;
 	int message_index                          = 0;
 	int print_count                            = 0;
@@ -418,151 +394,74 @@ void VARARGS(
 	format_string_length = narrow_string_length(
 	                        format_string );
 
-	if( format_string_length > message_size )
-	{
-		message_size = ( ( format_string_length / LIBCERROR_MESSAGE_INCREMENT_SIZE ) + 1 )
-		             * LIBCERROR_MESSAGE_INCREMENT_SIZE;
-	}
 #if defined( HAVE_WIDE_SYSTEM_CHARACTER )
-	do
+	libcerror_error_get_system_format_string(
+	 format_string,
+	 format_string_length,
+	 &system_format_string );
+
+	if( system_format_string == NULL )
 	{
-		reallocation = memory_reallocate(
-		                system_format_string,
-		                sizeof( system_character_t ) * ( format_string_length + 1 ) );
-
-		if( reallocation == NULL )
-		{
-			goto on_error;
-		}
-		system_format_string = (system_character_t *) reallocation;
-
-#if defined( __BORLANDC__ ) || defined( _MSC_VER )
-		print_count = wide_string_snwprintf(
-		               system_format_string,
-		               format_string_length + 1,
-		               L"%S",
-		               format_string );
-#else
-		print_count = wide_string_snwprintf(
-		               system_format_string,
-		               format_string_length + 1,
-		               L"%s",
-		               format_string );
-#endif
-
-		if( print_count <= -1 )
-		{
-			format_string_length += LIBCERROR_MESSAGE_INCREMENT_SIZE;
-		}
-		else if( ( (size_t) print_count > format_string_length )
-		      || ( system_format_string[ print_count ] != 0 ) )
-		{
-			format_string_length = (size_t) print_count;
-			print_count  = -1;
-		}
-		if( format_string_length >= LIBCERROR_MESSAGE_MAXIMUM_SIZE )
-		{
-			goto on_error;
-		}
+		return;
 	}
-	while( print_count <= -1 );
 #else
 	system_format_string = (system_character_t *) format_string;
 #endif
-
-#if defined( __BORLANDC__ ) || defined( _MSC_VER )
-	/* Rewrite %s to %S
-	 */
-	string_index  = 0;
-
-	while( string_index < format_string_length )
-	{
-		if( system_format_string[ string_index ] == 0 )
-		{
-			break;
-		}
-		else if( system_format_string[ string_index ] == (system_character_t) '%' )
-		{
-			string_index++;
-
-			if( system_format_string[ string_index ] == (system_character_t) 's' )
-			{
-				 system_format_string[ string_index ] = (system_character_t) 'S';
-			}
-		}
-		string_index++;
-	}
-#endif
 	if( *error == NULL )
 	{
-		internal_error = memory_allocate_structure(
-		                  libcerror_internal_error_t );
-
-		if( internal_error == NULL )
+		if( libcerror_error_initialize(
+		     error,
+		     error_domain,
+		     error_code ) != 1 )
 		{
 			goto on_error;
 		}
-		internal_error->domain             = error_domain;
-		internal_error->code               = error_code;
-		internal_error->number_of_messages = 0;
-		internal_error->messages           = NULL;
-		internal_error->sizes              = NULL;
-
-		*error = (libcerror_error_t *) internal_error;
 	}
-	else
-	{
-		internal_error = (libcerror_internal_error_t *) *error;
-	}
-	reallocation = memory_reallocate(
-	                internal_error->messages,
-	                sizeof( system_character_t * ) * ( internal_error->number_of_messages + 1 ) );
+	internal_error = (libcerror_internal_error_t *) *error;
 
-	if( reallocation == NULL )
+	if( libcerror_error_resize(
+	     internal_error ) != 1 )
 	{
 		goto on_error;
 	}
-	internal_error->messages = (system_character_t **) reallocation;
-
-	reallocation = memory_reallocate(
-	                internal_error->sizes,
-	                sizeof( size_t ) * ( internal_error->number_of_messages + 1 ) );
-
-	if( reallocation == NULL )
+	if( format_string_length > next_message_size )
 	{
-		goto on_error;
+		next_message_size = ( ( format_string_length / LIBCERROR_MESSAGE_INCREMENT_SIZE ) + 1 )
+		                  * LIBCERROR_MESSAGE_INCREMENT_SIZE;
 	}
-	internal_error->sizes = (size_t *) reallocation;
-
-	message_index                             = internal_error->number_of_messages;
-	internal_error->messages[ message_index ] = NULL;
-	internal_error->sizes[ message_index ]    = 0;
-	internal_error->number_of_messages       += 1;
+	message_index = internal_error->number_of_messages - 1;
+	error_string  = internal_error->messages[ message_index ];
 
 	do
 	{
+		if( next_message_size >= LIBCERROR_MESSAGE_MAXIMUM_SIZE )
+		{
+			next_message_size = LIBCERROR_MESSAGE_MAXIMUM_SIZE;
+		}
 		reallocation = memory_reallocate(
-		                internal_error->messages[ message_index ],
-		                sizeof( system_character_t ) * message_size );
+		                error_string,
+		                sizeof( system_character_t ) * next_message_size );
 
 		if( reallocation == NULL )
 		{
 			memory_free(
-			 internal_error->messages[ message_index ] );
+			 error_string );
 
-			internal_error->messages[ message_index ] = NULL;
-
-			break;
+			goto on_error;
 		}
-		internal_error->messages[ message_index ] = (system_character_t *) reallocation;
+		error_string = (system_character_t *) reallocation;
 
+		message_size = next_message_size;
+
+		/* argument_list cannot be reused in successive calls to vsnprintf
+		 */
 		VASTART(
 		 argument_list,
 		 const char *,
 		 format_string );
 
-		print_count = system_string_vsprintf(
-		               internal_error->messages[ message_index ],
+		print_count = system_string_vsnprintf(
+		               error_string,
 		               message_size,
 		               system_format_string,
 		               argument_list );
@@ -572,27 +471,35 @@ void VARARGS(
 
 		if( print_count <= -1 )
 		{
-			message_size += LIBCERROR_MESSAGE_INCREMENT_SIZE;
+			next_message_size += LIBCERROR_MESSAGE_INCREMENT_SIZE;
 		}
 		else if( ( (size_t) print_count >= message_size )
-		      || ( ( internal_error->messages[ message_index ] )[ print_count ] != 0 ) )
+		      || ( error_string[ print_count ] != (system_character_t) 0 ) )
 		{
-			message_size = (size_t) ( print_count + 1 );
-			print_count  = -1;
+			next_message_size = (size_t) ( print_count + 1 );
+			print_count       = -1;
+		}
+		else
+		{
+			error_string_size = (size_t) print_count + 1;
 		}
 		if( message_size >= LIBCERROR_MESSAGE_MAXIMUM_SIZE )
 		{
-			memory_free(
-			 internal_error->messages[ message_index ] );
-
-			internal_error->messages[ message_index ] = NULL;
-			internal_error->sizes[ message_index ]    = 0;
-
 			break;
 		}
-		internal_error->sizes[ message_index ] = (size_t) print_count + 1;
 	}
 	while( print_count <= -1 );
+
+	if( message_size >= LIBCERROR_MESSAGE_MAXIMUM_SIZE )
+	{
+		error_string[ LIBCERROR_MESSAGE_MAXIMUM_SIZE - 4 ] = (system_character_t) '.';
+		error_string[ LIBCERROR_MESSAGE_MAXIMUM_SIZE - 3 ] = (system_character_t) '.';
+		error_string[ LIBCERROR_MESSAGE_MAXIMUM_SIZE - 2 ] = (system_character_t) '.';
+		error_string[ LIBCERROR_MESSAGE_MAXIMUM_SIZE - 1 ] = 0;
+		error_string_size                                  = (size_t) LIBCERROR_MESSAGE_MAXIMUM_SIZE;
+	}
+	internal_error->messages[ message_index ] = error_string;
+	internal_error->sizes[ message_index ]    = error_string_size;
 
 #if defined( HAVE_WIDE_SYSTEM_CHARACTER )
 	memory_free(
@@ -601,66 +508,69 @@ void VARARGS(
 	system_format_string = NULL;
 #endif
 
-	string_index = internal_error->sizes[ message_index ] - 1;
+	message_size = internal_error->sizes[ message_index ];
 
-	if( ( internal_error->messages[ message_index ] != NULL )
-	 && ( ( internal_error->messages[ message_index ] )[ string_index - 1 ] == (system_character_t) '.' ) )
+	if( message_size < LIBCERROR_MESSAGE_MAXIMUM_SIZE )
 	{
-		string_index -= 1;
-	}
-	reallocation = memory_reallocate(
-			internal_error->messages[ message_index ],
-			sizeof( system_character_t ) * ( message_size + 13 + 512 ) );
+/* TODO move to separate helper function */
+		string_index = internal_error->sizes[ message_index ] - 1;
 
-	if( reallocation == NULL )
+		if( ( internal_error->messages[ message_index ] != NULL )
+		 && ( ( internal_error->messages[ message_index ] )[ string_index - 1 ] == (system_character_t) '.' ) )
+		{
+			string_index -= 1;
+		}
+		reallocation = memory_reallocate(
+				internal_error->messages[ message_index ],
+				sizeof( system_character_t ) * ( message_size + 13 + 512 ) );
+
+		if( reallocation == NULL )
+		{
+			memory_free(
+			 internal_error->messages[ message_index ] );
+
+			internal_error->messages[ message_index ] = NULL;
+
+			goto on_error;
+		}
+		internal_error->messages[ message_index ] = (system_character_t *) reallocation;
+
+		if( system_string_copy(
+		     &( ( internal_error->messages[ message_index ] )[ string_index ] ),
+		     _SYSTEM_STRING( " with error: " ),
+		     13 ) == NULL )
+		{
+			memory_free(
+			 internal_error->messages[ message_index ] );
+
+			internal_error->messages[ message_index ] = NULL;
+
+			goto on_error;
+		}
+		internal_error->sizes[ message_index ] += 13;
+		string_index                           += 13;
+
+		print_count = libcerror_system_copy_string_from_error_number(
+		               &( ( internal_error->messages[ message_index ] )[ string_index ] ),
+		               512,
+		               system_error_code );
+
+		if( print_count == -1 )
+		{
+			goto on_error;
+		}
+		message_size += (size_t) print_count;
+
+		internal_error->sizes[ message_index ] += print_count;
+	}
+	if( internal_error->sizes[ message_index ] >= LIBCERROR_MESSAGE_MAXIMUM_SIZE )
 	{
-		memory_free(
-		 internal_error->messages[ message_index ] );
-
-		internal_error->messages[ message_index ] = NULL;
-
-		goto on_error;
+		internal_error->messages[ message_index ][ LIBCERROR_MESSAGE_MAXIMUM_SIZE - 4 ] = (system_character_t) '.';
+		internal_error->messages[ message_index ][ LIBCERROR_MESSAGE_MAXIMUM_SIZE - 3 ] = (system_character_t) '.';
+		internal_error->messages[ message_index ][ LIBCERROR_MESSAGE_MAXIMUM_SIZE - 2 ] = (system_character_t) '.';
+		internal_error->messages[ message_index ][ LIBCERROR_MESSAGE_MAXIMUM_SIZE - 1 ] = 0;
+		internal_error->sizes[ message_index ]                                          = (size_t) LIBCERROR_MESSAGE_MAXIMUM_SIZE;
 	}
-	internal_error->messages[ message_index ] = (system_character_t *) reallocation;
-
-	if( system_string_copy(
-	     &( ( internal_error->messages[ message_index ] )[ string_index ] ),
-	     _SYSTEM_STRING( " with error: " ),
-	     13 ) == NULL )
-	{
-		memory_free(
-		 internal_error->messages[ message_index ] );
-
-		internal_error->messages[ message_index ] = NULL;
-
-		goto on_error;
-	}
-	internal_error->sizes[ message_index ] += 13;
-	string_index                           += 13;
-
-	print_count = libcerror_system_copy_string_from_error_number(
-	               &( ( internal_error->messages[ message_index ] )[ string_index ] ),
-	               512,
-	               system_error_code );
-
-	if( print_count == -1 )
-	{
-		goto on_error;
-	}
-	message_size += (size_t) print_count;
-
-	if( message_size >= LIBCERROR_MESSAGE_MAXIMUM_SIZE )
-	{
-		memory_free(
-		 internal_error->messages[ message_index ] );
-
-		internal_error->messages[ message_index ] = NULL;
-		internal_error->sizes[ message_index ]    = 0;
-
-		goto on_error;
-	}
-	internal_error->sizes[ message_index ] += print_count;
-
 	return;
 
 on_error:
@@ -671,12 +581,6 @@ on_error:
 		 system_format_string );
 	}
 #endif
-	if( ( *error == NULL )
-	 && ( internal_error != NULL ) )
-	{
-		memory_free(
-		 internal_error );
-	}
 	return;
 }
 

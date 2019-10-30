@@ -45,6 +45,16 @@ PyObject *pyvmdk_check_file_signature_file_object(
            PyObject *arguments,
            PyObject *keywords );
 
+PyObject *pyvmdk_open_new_handle(
+           PyObject *self,
+           PyObject *arguments,
+           PyObject *keywords );
+
+PyObject *pyvmdk_open_new_handle_with_file_object(
+           PyObject *self,
+           PyObject *arguments,
+           PyObject *keywords );
+
 #if PY_MAJOR_VERSION >= 3
 PyMODINIT_FUNC PyInit_pyvmdk(
                 void );

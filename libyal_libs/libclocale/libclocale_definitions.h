@@ -1,7 +1,7 @@
 /*
  * The internal definitions
  *
- * Copyright (C) 2010-2017, Joachim Metz <joachim.metz@gmail.com>
+ * Copyright (C) 2010-2018, Joachim Metz <joachim.metz@gmail.com>
  *
  * Refer to AUTHORS for acknowledgements.
  *
@@ -34,11 +34,11 @@
  */
 #else
 
-#define LIBCLOCALE_VERSION					20170105
+#define LIBCLOCALE_VERSION					20180721
 
 /* The libclocale version string
  */
-#define LIBCLOCALE_VERSION_STRING				"20170105"
+#define LIBCLOCALE_VERSION_STRING				"20180721"
 
 /* The codepage feature flag definitions
  */
@@ -61,7 +61,7 @@ enum LIBCLOCALE_CODEPAGES_SETS
 
 /* The codepage definitions
  */
-enum LIBCLOCALE_CODEPAGESS
+enum LIBCLOCALE_CODEPAGES
 {
 	LIBCLOCALE_CODEPAGE_ASCII				= 20127,
 
@@ -100,7 +100,7 @@ enum LIBCLOCALE_CODEPAGESS
 	LIBCLOCALE_CODEPAGE_WINDOWS_1258			= 1258
 };
 
-#endif
+#endif /* !defined( HAVE_LOCAL_LIBCLOCALE ) */
 
-#endif
+#endif /* !defined( _LIBCLOCALE_INTERNAL_DEFINITIONS_H ) */
 

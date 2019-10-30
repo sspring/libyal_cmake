@@ -981,8 +981,7 @@ int libvmdk_descriptor_file_read_header(
 				 && ( value[ 2 ] == 'K' ))
 				{
 					descriptor_file->encoding = LIBCLOCALE_CODEPAGE_WINDOWS_936;
-				}
-				else if( libclocale_codepage_copy_from_string(
+				} else if( libclocale_codepage_copy_from_string(
 				          &( descriptor_file->encoding ),
 				          value,
 				          value_length,

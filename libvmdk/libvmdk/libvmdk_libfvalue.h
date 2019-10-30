@@ -40,7 +40,8 @@
 #include <libfvalue_types.h>
 #include <libfvalue_value.h>
 #include <libfvalue_value_type.h>
-#include <libfvalue_string.h>
+#include <libfvalue_utf16_string.h>
+#include <libfvalue_utf8_string.h>
 
 #else
 

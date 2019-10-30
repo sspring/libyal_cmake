@@ -1,7 +1,7 @@
 /*
  * The internal extern definition
  *
- * Copyright (C) 2012-2017, Joachim Metz <joachim.metz@gmail.com>
+ * Copyright (C) 2012-2018, Joachim Metz <joachim.metz@gmail.com>
  *
  * Refer to AUTHORS for acknowledgements.
  *
@@ -37,8 +37,11 @@
 
 #include <libcthreads/extern.h>
 
+#define LIBCTHREADS_EXTERN_VARIABLE	LIBCTHREADS_EXTERN
+
 #else
-#define LIBCTHREADS_EXTERN	/* extern */
+#define LIBCTHREADS_EXTERN		/* extern */
+#define LIBCTHREADS_EXTERN_VARIABLE	extern
 
 #endif /* !defined( HAVE_LOCAL_LIBCTHREADS ) */
 

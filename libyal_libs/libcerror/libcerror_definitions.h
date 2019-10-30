@@ -1,7 +1,7 @@
 /*
  * The internal definitions
  *
- * Copyright (C) 2008-2017, Joachim Metz <joachim.metz@gmail.com>
+ * Copyright (C) 2008-2018, Joachim Metz <joachim.metz@gmail.com>
  *
  * Refer to AUTHORS for acknowledgements.
  *
@@ -35,11 +35,11 @@
  */
 #else
 
-#define LIBCERROR_VERSION				20170824
+#define LIBCERROR_VERSION				20181117
 
 /* The libcerror version string
  */
-#define LIBCERROR_VERSION_STRING			"20170824"
+#define LIBCERROR_VERSION_STRING			"20181117"
 
 /* The error domains
  */
@@ -318,6 +318,9 @@ enum LIBCERROR_RUNTIME_ERROR
 };
 
 #endif /* !defined( HAVE_LOCAL_LIBCERROR ) */
+
+#define LIBCERROR_MESSAGE_INCREMENT_SIZE		64
+#define LIBCERROR_MESSAGE_MAXIMUM_SIZE			4096
 
 #endif /* !defined( LIBCERROR_INTERNAL_DEFINITIONS_H ) */
 

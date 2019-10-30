@@ -1,7 +1,7 @@
 /*
  * Locale functions
  *
- * Copyright (C) 2010-2017, Joachim Metz <joachim.metz@gmail.com>
+ * Copyright (C) 2010-2018, Joachim Metz <joachim.metz@gmail.com>
  *
  * Refer to AUTHORS for acknowledgements.
  *
@@ -41,6 +41,12 @@ int libclocale_GetLocaleInfo(
      int size );
 
 #endif /* defined( WINAPI ) && ( WINVER < 0x0500 ) */
+
+int libclocale_locale_get_codepage_from_charset(
+     int *codepage,
+     char *charset,
+     size_t charset_length,
+     libcerror_error_t **error );
 
 LIBCLOCALE_EXTERN \
 int libclocale_locale_get_codepage(

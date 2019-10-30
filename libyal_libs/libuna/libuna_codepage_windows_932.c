@@ -1,7 +1,7 @@
 /*
  * Windows 932 codepage (Japanese Shift-JIS) functions
  *
- * Copyright (C) 2008-2017, Joachim Metz <joachim.metz@gmail.com>
+ * Copyright (C) 2008-2018, Joachim Metz <joachim.metz@gmail.com>
  *
  * Refer to AUTHORS for acknowledgements.
  *
@@ -4275,7 +4275,7 @@ int libuna_codepage_windows_932_unicode_character_size_to_byte_stream(
 	return( 1 );
 }
 
-/* Copies a Unicode character from a byte stream
+/* Copies an Unicode character from a byte stream
  * Returns 1 if successful or -1 on error
  */
 int libuna_codepage_windows_932_copy_from_byte_stream(
@@ -4385,7 +4385,7 @@ int libuna_codepage_windows_932_copy_from_byte_stream(
 				*unicode_character = libuna_codepage_windows_932_byte_stream_to_unicode_base_0x81c8[ additional_character ];
 			}
 			else if( ( additional_character >= 0xda )
-			      && ( additional_character < 0xea ) )
+			      && ( additional_character < 0xe9 ) )
 			{
 				additional_character -= 0xda;
 
@@ -4840,7 +4840,7 @@ int libuna_codepage_windows_932_copy_from_byte_stream(
 	return( 1 );
 }
 
-/* Copies a Unicode character to a byte stream
+/* Copies an Unicode character to a byte stream
  * Returns 1 if successful or -1 on error
  */
 int libuna_codepage_windows_932_copy_to_byte_stream(

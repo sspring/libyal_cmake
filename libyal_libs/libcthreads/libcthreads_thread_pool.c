@@ -1,7 +1,7 @@
 /*
  * Thread pool functions
  *
- * Copyright (C) 2012-2017, Joachim Metz <joachim.metz@gmail.com>
+ * Copyright (C) 2012-2018, Joachim Metz <joachim.metz@gmail.com>
  *
  * Refer to AUTHORS for acknowledgements.
  *
@@ -22,6 +22,8 @@
 #include <common.h>
 #include <memory.h>
 #include <types.h>
+
+#include <errno.h>
 
 #if defined( WINAPI ) && ( WINVER >= 0x0602 )
 #include <Threadpoolapiset.h>
@@ -772,18 +774,33 @@ int libcthreads_thread_pool_create(
 				  &libcthreads_thread_pool_callback_function_helper,
 				  (void *) internal_thread_pool );
 
-		if( pthread_result != 0 )
+		switch( pthread_result )
 		{
-			libcerror_system_set_error(
-			 error,
-			 pthread_result,
-			 LIBCERROR_ERROR_DOMAIN_RUNTIME,
-			 LIBCERROR_RUNTIME_ERROR_INITIALIZE_FAILED,
-			 "%s: unable to create thread: %d.",
-			 function,
-			 thread_index );
+			case 0:
+				break;
 
-			goto on_error;
+			case EAGAIN:
+				libcerror_error_set(
+				 error,
+				 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+				 LIBCERROR_RUNTIME_ERROR_FINALIZE_FAILED,
+				 "%s: unable to create thread: %d with error: Insufficient resources.",
+				 function,
+				 thread_index );
+
+				goto on_error;
+
+			default:
+				libcerror_system_set_error(
+				 error,
+				 pthread_result,
+				 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+				 LIBCERROR_RUNTIME_ERROR_FINALIZE_FAILED,
+				 "%s: unable to create thread: %d.",
+				 function,
+				 thread_index );
+
+				goto on_error;
 		}
 	}
 #endif /* defined( WINAPI ) && ( WINVER >= 0x0602 ) */
@@ -1591,7 +1608,19 @@ int libcthreads_thread_pool_join(
 		                  internal_thread_pool->threads_array[ thread_index ],
 		                  (void **) &thread_return_value );
 
-		if( pthread_result != 0 )
+		if( pthread_result == EDEADLK )
+		{
+			libcerror_error_set(
+			 error,
+			 LIBCERROR_ERROR_DOMAIN_RUNTIME,
+			 LIBCERROR_RUNTIME_ERROR_FINALIZE_FAILED,
+			 "%s: unable to join thread: %d with error: Deadlock condition detected.",
+			 function,
+			 thread_index );
+
+			result = -1;
+		}
+		else if( pthread_result != 0 )
 		{
 			libcerror_system_set_error(
 			 error,

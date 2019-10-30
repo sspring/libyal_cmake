@@ -19,6 +19,9 @@
 /* Define to 1 if you have the `chdir' function. */
 #define HAVE_CHDIR 1
 
+/* Define to 1 if you have the `clock_gettime' function. */
+#define HAVE_CLOCK_GETTIME 1
+
 /* Define to 1 if you have the `close' function. */
 #define HAVE_CLOSE 1
 
@@ -131,7 +134,7 @@
 /* #undef HAVE_LANGINFO_H */
 
 /* Define to 1 if you have the `bfio' library (-lbfio). */
-/* #undef HAVE_LIBBFIO */
+#define HAVE_LIBBFIO 1
 
 /* Define to 1 if you have the <libbfio.h> header file. */
 /* #undef HAVE_LIBBFIO_H */
@@ -236,7 +239,7 @@
 #define HAVE_LOCALE_H 1
 
 /* Define to 1 if the local version of libbfio is used. */
-#define HAVE_LOCAL_LIBBFIO 1
+/* #undef HAVE_LOCAL_LIBBFIO */
 
 /* Define to 1 if the local version of libcdata is used. */
 #define HAVE_LOCAL_LIBCDATA 1
@@ -304,6 +307,9 @@
 /* Define to 1 if you have the mkdir function with a second mode argument. */
 /* #undef HAVE_MKDIR_MODE */
 
+/* Define to 1 if you have the `mkstemp' function. */
+#define HAVE_MKSTEMP 1
+
 /* Define to 1 if multi thread support should be used. */
 #define HAVE_MULTI_THREAD_SUPPORT 1
 
@@ -330,15 +336,6 @@
 
 /* Define to 1 if you have the <pthread.h> header file. */
 /* #undef HAVE_PTHREAD_H */
-
-/* Define to 1 if you have Python */
-/* #undef HAVE_PYTHON */
-
-/* Define to 1 if you have Python 2 */
-/* #undef HAVE_PYTHON2 */
-
-/* Define to 1 if you have Python 3 */
-/* #undef HAVE_PYTHON3 */
 
 /* Define to 1 if you have the <Python.h> header file. */
 /* #undef HAVE_PYTHON_H */
@@ -532,9 +529,6 @@
 /* Define to 1 if you have the `uncompress' function. */
 #define HAVE_ZLIB_UNCOMPRESS 1
 
-/* Define if running the test suite so that test #27 works on MinGW. */
-/* #undef LT_MINGW_STATIC_TESTSUITE_HACK */
-
 /* Define to the sub-directory where libtool stores uninstalled libraries. */
 #define LT_OBJDIR ".libs/"
 
@@ -548,7 +542,7 @@
 #define PACKAGE_NAME "libvmdk"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "libvmdk 20180403"
+#define PACKAGE_STRING "libvmdk 20181227"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "libvmdk"
@@ -557,10 +551,13 @@
 #define PACKAGE_URL ""
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "20180403"
+#define PACKAGE_VERSION "20181227"
 
 /* The size of `int', as computed by sizeof. */
 #define SIZEOF_INT 4
+
+/* The size of `long', as computed by sizeof. */
+#define SIZEOF_LONG 4
 
 /* The size of `off_t', as computed by sizeof. */
 #define SIZEOF_OFF_T 8
@@ -584,7 +581,7 @@
 /* #undef TM_IN_SYS_TIME */
 
 /* Version number of package */
-#define VERSION "20180403"
+#define VERSION "20181227"
 
 /* Enable large inode numbers on Mac OS X 10.5.  */
 #ifndef _DARWIN_USE_64_BIT_INODE

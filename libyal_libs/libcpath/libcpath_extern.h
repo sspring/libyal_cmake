@@ -1,7 +1,7 @@
 /*
  * The internal extern definition
  *
- * Copyright (C) 2008-2017, Joachim Metz <joachim.metz@gmail.com>
+ * Copyright (C) 2008-2018, Joachim Metz <joachim.metz@gmail.com>
  *
  * Refer to AUTHORS for acknowledgements.
  *
@@ -37,8 +37,11 @@
 
 #include <libcpath/extern.h>
 
+#define LIBCPATH_EXTERN_VARIABLE	LIBCPATH_EXTERN
+
 #else
-#define LIBCPATH_EXTERN	/* extern */
+#define LIBCPATH_EXTERN		/* extern */
+#define LIBCPATH_EXTERN_VARIABLE	extern
 
 #endif /* !defined( HAVE_LOCAL_LIBCPATH ) */
 
